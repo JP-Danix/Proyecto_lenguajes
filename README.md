@@ -20,6 +20,7 @@ Funcionalidades implementadas:
 - Efectos de combate: flash rojo y retroceso al recibir daño (jugador), retroceso del enemigo al ser golpeado.
 - Zonas de colina con colisiones y orden de renderizado dinámicos.
 - Profundidad top-down por sort del eje Y: árboles y rocas cubren al jugador cuando está detrás de ellos.
+- Sistema de magia por combos: secuencias de teclas validadas por una **gramática regular** (sección 6); cada cadena aceptada lanza un proyectil distinto (fuego, hielo o magia) animado, que vuela hacia la dirección de mira, gira según el trayecto, daña al enemigo y muere contra los muros sólidos.
 
 ## Cómo correrlo
 
@@ -36,6 +37,11 @@ Funcionalidades implementadas:
 | Mover | Teclas de flechas / ejes `Horizontal` y `Vertical` de Input |
 | Atacar | Clic izquierdo del mouse |
 | Recoger corazón | Caminar sobre el pickup |
+| Combo **Fuego** | `B`, `B`, `N` (teclear rápido: menos de 0.4 s entre teclas) |
+| Combo **Hielo** | `B`, `N`, `M` |
+| Combo **Magia** | `B`, `G` |
+
+> Los combos usan letras del alfabeto, que no mueven al jugador: se puede mantener la dirección de mira mientras se teclea la secuencia. El proyectil sale hacia donde el jugador mira (`Xinput`/`Yinput`).
 
 ---
 
@@ -390,8 +396,100 @@ Varias transiciones de los autómatas anteriores no dependen solo de la entrada,
 | Duración del "hurt" del enemigo | 0.3 s | `EnemyHealth.cs` (`hurtDuration`) | Cuánto tiempo permanece la guarda `isHurt == true` |
 | Duración del knockback (jugador) | 0.2 s | `PlayerHealth.cs` (`knockbackDuration`) | Tiempo sin control del movimiento mientras actúa el retroceso |
 | Duración del knockback (enemigo) | 0.15 s | `PlayerSword.cs` (`enemyKnockbackDuration`) | Tiempo sin patrulla mientras actúa el retroceso del enemigo |
+| Timeout de la gramática de combos | 0.4 s | `ComboController.cs` (`timeout`) | Sin teclas durante 0.4 s, la cadena a medias se cancela y el autómata vuelve al estado inicial |
 
 Estas guardas resuelven un problema clásico de modelado: los eventos físicos de Unity (`OnCollisionStay2D`, `OnTriggerStay2D`) ocurren **cada frame**, pero las transiciones del autómata deben ser discretas. Los temporizadores convierten un flujo continuo de eventos en símbolos discretos del alfabeto.
+
+---
+
+### 6. La gramática regular de los combos (tipo 3 de Chomsky)
+
+Este sistema es la aplicación más directa del curso: el **lenguaje de los combos está definido por una gramática regular** (lineal por la derecha, tipo 3 de Chomsky), y el reconocedor que corre en runtime **se compila automáticamente desde esa gramática**.
+
+**Qué modela:** qué secuencias de teclas son combos válidos y qué proyectil produce cada una.
+
+**Fuente:** `Assets/Scripts/ComboController.cs` (la gramática y su compilación) + `Assets/Scripts/Projectile.cs` (la salida).
+
+**Tipo:** gramática regular (tipo 3) **compilada** a un autómata finito determinista (AFD) en forma de trie. Por el teorema de Kleene, gramáticas regulares y autómatas finitos son equivalentes: la gramática *genera* el lenguaje (punto de vista declarativo, visible en el Inspector) y el autómata lo *reconoce* (punto de vista operativo, lo que corre en el juego).
+
+#### Alfabeto
+
+El alfabeto lógico es el conjunto de teclas que `LeerSimbolo()` reconoce: **flechas, WASD y las letras A-Z**. Cada tecla presionada es un símbolo de entrada; las flechas y WASD se normalizan a los símbolos de flecha (ambas formas producen el mismo símbolo lógico).
+
+Las producciones usan letras (`B`, `N`, `M`, `G`) por una ventaja práctica: **no mueven al jugador**, así que se puede mantener la dirección de mira mientras se teclea el combo.
+
+#### Producciones de la gramática (serializadas en el Inspector)
+
+| Producción | Cadena | Estado de aceptación produce (salida Mealy) | Daño |
+|------------|--------|---------------------------------------------|------|
+| `Fuego` | `B B N` | Proyectil `Fireball` | 1 |
+| `Hielo` | `B N M` | Proyectil `Iceball` | 1 |
+| `Magia` | `B G` | Proyectil `Magicball` | 1 |
+
+#### Compilación: gramática → AFD
+
+En `Awake()`, `CompilarGramatica()` convierte la lista de producciones en un **trie determinista**: para cada cadena, recorre (o crea) el camino de estados correspondiente a sus prefijos, y marca el estado final con la regla completa (estado de **aceptación**). Cada nodo tiene una tabla de transiciones `Dictionary<KeyCode, Nodo>` — una función de transición δ determinista.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "q0 (inicial)" as q0
+    state "q1" as q1
+    state "q2" as q2
+    state "q3" as q3
+    state "q4 (acepta: Hielo)" as q4
+    state "q5 (acepta: Fuego)" as q5
+    state "q6 (acepta: Magia)" as q6
+
+    [*] --> q0
+
+    q0 --> q1 : B
+    q1 --> q2 : B
+    q2 --> q5 : N
+    q1 --> q3 : N
+    q3 --> q4 : M
+    q1 --> q6 : G
+```
+
+Los tres estados de aceptación (`q5`, `q4`, `q6`) son **estados de aceptación con salida**: al entrar en ellos se lanza el proyectil asociado y el autómata vuelve al estado inicial (la cadena se consumió completa). Como la salida se produce en la transición de aceptación y no en el estado mismo, es un comportamiento tipo **Mealy**.
+
+#### Funcionamiento del reconocedor (Update)
+
+| Entrada | Comportamiento |
+|---------|----------------|
+| Símbolo con transición válida | Avanza al estado siguiente |
+| Símbolo no esperado | Cadena **rechazada**: vuelve al estado inicial y reintenta ese mismo símbolo desde ahí |
+| Estado de aceptación | Lanza el proyectil (salida) y reinicia al estado inicial |
+| 0.4 s sin teclas | Guarda temporal: la cadena a medias se cancela (vuelta al estado inicial) |
+
+Fíjate que los tres combos **comparten el prefijo `B`**: en el autómata, la segunda tecla decide la rama (`B` → fuego, `N` → hielo, `G` → magia). El trie maneja prefijos compartidos sin ambigüedad.
+
+#### Restricción de diseño: ninguna producción prefijo de otra
+
+El autómata acepta y reinicia **en cuanto** llega a un estado de aceptación, así que si una producción fuera prefijo de otra (p. ej. `Magia = B N` con `Hielo = B N M`), la corta "se tragaría" a la larga: al teclear `B N` se lanzaría Magia y se reiniciaría el autómata, dejando la `M` de Hielo sin contexto — Hielo se volvería inalcanzable. La gramática seguiría siendo regular, pero el lenguaje efectivo perdería la cadena larga.
+
+Regla práctica: dos combos pueden compartir el inicio, pero cuando se bifurcan, se bifurcan para siempre. (La alternativa académica — diferir la aceptación con un buffer, como el *maximal munch* de los lexer — se descartó por introducir retraso perceptible en la salida.)
+
+#### El proyectil: la salida del autómata en el mundo
+
+`Projectile.cs` materializa la aceptación de la gramática:
+
+1. `Lanzar(dirección, daño)`: recibe la dirección de mira del jugador y fija la velocidad; el sprite (que apunta a la derecha) **rota** hacia la dirección de vuelo con `Atan2`.
+2. Ignora al `Player` y a los **triggers "fantasma"** (espada, pickups, zonas de colina): solo colisiones no-trigger (muros) lo destruyen.
+3. Si toca un `EnemyHealth`, le aplica el daño del combo y muere; además tiene guarda temporal propia (`vidaMaxima` = 2 s).
+
+#### Dónde vive cada parte de la gramática
+
+| Concepto formal | Implementación |
+|-----------------|----------------|
+| Alfabeto | `LeerSimbolo()` en `ComboController.cs` (flechas + WASD + letras A-Z) |
+| Producciones | Lista serializada `combos` en el Inspector (nombre, secuencia, proyectil, daño) |
+| Compilación gramática → AFD | `CompilarGramatica()` en `Awake()` (trie determinista) |
+| Función de transición δ | `transiciones` (Dictionary) de cada nodo |
+| Estados de aceptación | Campo `acepta` de cada nodo (la regla completa) |
+| Salida (Mealy) | `LanzarProyectil()` en la transición de aceptación |
+| Guarda temporal | `timeout` = 0.4 s en `Update()` |
 
 ---
 
@@ -411,6 +509,12 @@ Los autómatas de las secciones anteriores no viven aislados: se comunican. Este
 1. Contacto físico → `EnemyContactDamage.cs`: en `OnCollisionEnter2D` llama `EnemyPatrol.TurnAround()` (el hongo da media vuelta y se retira) y en `OnCollisionStay2D` aplica daño si su cooldown de 1 s lo permite.
 2. `PlayerHealth.TakeDamage()` consume golpes de la cima de la pila (PDA, sección 4), aplica flash rojo (0.15 s), knockback (0.2 s) e invulnerabilidad (0.5 s).
 3. `PlayerMovement.cs` consulta `IsKnockedBack` para no pelear con el retroceso (y `animator.GetBool("isAttacking")` para no caminar durante el ataque).
+
+**El jugador lanza un proyectil (gramática de combos, sección 6):**
+
+1. El jugador teclea una cadena válida (p. ej. `B B N`) → la gramática compilada en `ComboController.cs` llega a un estado de aceptación y lanza el proyectil del combo.
+2. `Projectile.cs` toma la dirección de mira (`Xinput`/`Yinput`), rota el sprite hacia esa dirección y vuela en línea recta.
+3. Si toca al enemigo → `EnemyHealth.TakeDamage()` (FSM del enemigo, sección 2) + knockback; si toca un muro sólido, muere; los triggers "fantasma" no lo detienen.
 
 El knockback en ambos sentidos existe para que la "coreografía" del duelo sea legible: cada golpe separa físicamente a los combatientes y devuelve el control a los autómatas de movimiento tras su ventana temporizada.
 
@@ -464,7 +568,6 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 
 - **Autómata finito para los mapas:** FSM que modele el cambio completo de escena/zona al transitar entre mapas (más allá de las colinas actuales).
 - **Autómata de pila (PDA) para los mapas:** estructura con memoria de contexto para manejar jerarquías de zonas (p. ej., mundo → dungeon → sala), donde regresar implica desapilar el mapa anterior.
-- **Sistema de combos de teclas:** el jugador ejecuta **secuencias de teclas**; si la secuencia coincide con un patrón válido del "diccionario" de combos, se lanza **un proyectil distinto por combo**; si la secuencia no coincide con ningún patrón, **no ocurre nada**. Conceptualmente, un reconocedor de cadenas (trie/AFD sobre el alfabeto de teclas) alimentando una pila de proyectiles (PDA).
 - **Game Over visual:** hoy el rechazo del PDA destruye al jugador con un log en Console; falta pantalla de muerte/respawn.
 
 ---
@@ -481,7 +584,7 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 | Sistema de vida | **Autómata de pila (PDA)**: alfabeto de entrada (daño, recoger), alfabeto de pila (colores de corazón), PUSH/POP, estado de rechazo = Game Over. La UI es una función de la pila. | `PlayerHealth.cs`, `HeartPickup.cs`, `HealthUI.cs` |
 | Guardas temporales | **Autómatas temporizados**: transiciones condicionadas por tiempo acumulado; convierten eventos continuos por frame en símbolos discretos. | Cooldowns en `PlayerAttack.cs`, `PlayerSword.cs`, `EnemyContactDamage.cs`, `PlayerHealth.cs` |
 | Ciclo de ataque con Animation Event | Distinción entre **entrada de la FSM** (`isAttacking`) y **acciones de salida** (`ResetAttack()` como evento generado por la animación), y el papel de las **guardas temporales** (cooldown, exit time). | `PlayerAttack.cs` + clips de ataque |
-| Combos de teclas (planeado) | **Reconocimiento de cadenas** sobre un alfabeto: un trie o AFD que acepta exactamente las secuencias válidas, y una **pila** para manejar los proyectiles lanzados — aplicación directa de **AFD y PDA**. | Pendiente |
+| Combos de teclas | **Gramática regular (tipo 3 de Chomsky) compilada a AFD**: las producciones se serializan como datos en el Inspector y se compilan a un trie determinista en `Awake()` (teorema de Kleene: gramática regular ↔ autómata finito). Los estados de aceptación producen salida al transitar (comportamiento **Mealy**: lanzar el proyectil). Alfabeto extendido (flechas, WASD, letras A-Z) y guarda temporal de 0.4 s. | `ComboController.cs`, `Projectile.cs` |
 | Autómatas de mapas (planeado) | AFD para navegación entre zonas y **autómata de pila (PDA)** para la jerarquía de mapas (apilar/desapilar el contexto de ubicación). | Pendiente |
 
 ---
@@ -504,9 +607,11 @@ Proyecto_lenguajes/
 │   │   ├── EnemyHealth.cs           # Vida del enemigo; isHurt 0.3 s (coroutina)
 │   │   ├── EnemyContactDamage.cs    # Daño por contacto; cooldown 1 s; TurnAround() al iniciar contacto
 │   │   ├── HillEntry.cs             # Transición a "Dentro de la colina"
-│   │   └── HillExit.cs              # Transición a "Fuera de la colina"
-│   ├── Sprites/             # Pixel art (jugador, hongo, tiles, colinas, deco, agua, Heart 1.png)
-│   ├── Prefabs/             # HeartIcon.prefab (icono de la UI) y HeartPickup.prefab (corazón recogible)
+│   │   ├── HillExit.cs              # Transición a "Fuera de la colina"
+│   │   ├── ComboController.cs       # Gramática regular de combos compilada a trie/AFD; lanza proyectiles
+│   │   └── Projectile.cs            # Vuelo del proyectil, rotación hacia la dirección, impacto (daño/muros)
+│   ├── Sprites/             # Pixel art (jugador, hongo, tiles, colinas, deco, agua, Heart 1.png, Fire/Ice/Magic.png)
+│   ├── Prefabs/             # HeartIcon, HeartPickup, Player, HealthCanvas, Enemy, Fireball, Iceball, Magicball
 │   └── Settings/            # Configuración URP y Input System
 ├── Packages/                # Dependencias (manifest.json)
 └── ProjectSettings/         # Configuración del proyecto Unity
@@ -516,12 +621,13 @@ Proyecto_lenguajes/
 
 | Objeto | Componentes clave | Notas |
 |--------|-------------------|-------|
-| `Player` | `PlayerMovement`, `PlayerAttack`, `PlayerHealth` | Tag obligatorio: `Player` (lo usan HillEntry/HillExit y HeartPickup). `Initial Hearts` se apila en orden: el último de la lista queda en la cima |
+| `Player` | `PlayerMovement`, `PlayerAttack`, `PlayerHealth`, `ComboController` | Tag obligatorio: `Player` (lo usan HillEntry/HillExit y HeartPickup). `Initial Hearts` se apila en orden: el último de la lista queda en la cima. `Combos` serializa las producciones de la gramática (sección 6) |
 | `SwordTrigger` (hijo de Player) | Collider 2D (trigger) + `PlayerSword` | Se posiciona delante del jugador según `Xinput`/`Yinput` |
 | `Enemy` | `EnemyPatrol`, `EnemyHealth`, `EnemyContactDamage` | Tag: `Enemy`. Requiere `pointA`/`pointB` asignados |
 | `HealthCanvas` > `Hearts` | `HealthUI` + Horizontal Layout Group | El primer icono (izquierda) es la cima de la pila; iconos de 80×80 |
 | `HeartPickup` | Sprite + Circle Collider 2D (Is Trigger) + `HeartPickup` | Campo `Type` define el color que hace PUSH; el script tinta el sprite según el tipo |
 | Tilemaps `TreeCollition` / `TreeNotCollition` | Tilemap Collider 2D + Tilemap Renderer (Modo Individual, Order 4) | Mismo orden que el jugador: la profundidad la decide el sort por eje Y |
+| `Fireball` / `Iceball` / `Magicball` (prefabs) | Animator (clip de vuelo en bucle, ciclo 0.25 s), Rigidbody 2D (Gravity 0), Circle Collider 2D (Is Trigger), `Projectile`, Order in Layer 5 | Salida de los estados de aceptación de la gramática; hojas de sprites de 5 frames (320×32, PPU 32) |
 
 ---
 

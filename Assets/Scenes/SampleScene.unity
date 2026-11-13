@@ -4128,7 +4128,7 @@ TilemapRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+  - {fileID: 2100000, guid: a5aab49bb10525c46af685514de821a2, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -7091,11 +7091,48 @@ Tilemap:
     e31: 0
     e32: 0
     e33: 1
+--- !u!1 &587360909 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5403511492603463255, guid: 64669ae2ae0bc534297b913ab62b7174, type: 3}
+  m_PrefabInstance: {fileID: 9091160076056836727}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &587360914 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 8977803372352821886, guid: 64669ae2ae0bc534297b913ab62b7174, type: 3}
   m_PrefabInstance: {fileID: 9091160076056836727}
   m_PrefabAsset: {fileID: 0}
+--- !u!95 &587360915 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 2410029784982705437, guid: 64669ae2ae0bc534297b913ab62b7174, type: 3}
+  m_PrefabInstance: {fileID: 9091160076056836727}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &587360918
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 587360909}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d289665f5d7da5a4782711aec88a7bc2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ComboController
+  combos:
+  - nombre: Fuego
+    secuencia: 62000000620000006e000000
+    proyectil: {fileID: 4849638151283522256, guid: f3b74077644377643a20965beded85ab, type: 3}
+    danio: 1
+  - nombre: Hielo
+    secuencia: 620000006e0000006d000000
+    proyectil: {fileID: 5066428839284703846, guid: 17b3b0e739791d648bc8dda24e9e7dae, type: 3}
+    danio: 1
+  - nombre: Magia
+    secuencia: 6200000067000000
+    proyectil: {fileID: 2230519581521249237, guid: a0981d2f8d66e8043b55aa7eb5fff493, type: 3}
+    danio: 1
+  animator: {fileID: 587360915}
+  timeout: 0.4
 --- !u!1 &619394800
 GameObject:
   m_ObjectHideFlags: 0
@@ -9048,7 +9085,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5403511492603463255, guid: 64669ae2ae0bc534297b913ab62b7174, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 587360918}
   m_SourcePrefab: {fileID: 100100000, guid: 64669ae2ae0bc534297b913ab62b7174, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
