@@ -7062,6 +7062,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NewMonoBehaviourScript
   speed: 4
+  playerAttack: {fileID: 587360916}
   rb: {fileID: 587360911}
   animator: {fileID: 587360915}
   spriteRenderer: {fileID: 587360913}
@@ -7237,6 +7238,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aaab48ad31e52b248bd49b3b97ecad70, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerAttack
+  slashEffectDown: {fileID: 5780434220702717423, guid: c204d66f0dd170d45938c167d29396ce, type: 3}
+  slashEffectUP: {fileID: 2653476563735388840, guid: 45ac7e44905a2a24d81e23a9cca9e47e, type: 3}
+  slashEffectSide: {fileID: 1592864171578029764, guid: 1ded8ae94501edb4294b6a7e9dcf9220, type: 3}
+  attackSpawnPoint: {fileID: 587360914}
   animator: {fileID: 587360915}
   rb: {fileID: 587360911}
   attackCooldown: 0.3
@@ -7931,7 +7936,7 @@ TilemapRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 4
+  m_SortingOrder: 5
   m_MaskInteraction: 0
   m_ChunkSize: {x: 32, y: 32, z: 32}
   m_ChunkCullingBounds: {x: 0.8444444, y: 1, z: 0}
