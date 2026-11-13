@@ -416,6 +416,48 @@ El knockback en ambos sentidos existe para que la "coreografía" del duelo sea l
 
 ---
 
+## Reutilización entre niveles
+
+El proyecto está preparado para construir niveles nuevos con el mínimo trabajo manual. Dos mecanismos lo permiten:
+
+### Auto-configuración en el código
+
+Los scripts detectan si falta configuración en el Inspector y se auto-completan con **convenciones de nombres**:
+
+| Script | Si el Inspector está vacío... | Convención requerida |
+|--------|------------------------------|----------------------|
+| `EnemyPatrol.cs` | Crea sus puntos de patrulla alrededor del punto inicial (a `patrolDistance` a cada lado, en el eje X) | Ninguna: funciona solo |
+| `HillEntry.cs` / `HillExit.cs` | Busca los tilemaps por nombre y cablea sus colliders | Tilemap de acantilados llamado `HillsCollition` y tilemap de límites llamado `HillBoundary` |
+
+Si algo se asigna a mano, el código lo respeta (compatibilidad con la escena actual). En niveles con **varias colinas**, renombra los tilemaps (p. ej. `HillsCollition2`) y cablea a mano.
+
+### Receta para armar un nivel nuevo
+
+1. Duplicar la escena actual (`Ctrl+D` sobre `SampleScene` en el Project) o crear una escena vacía y montar el Grid.
+2. Pintar los Tilemaps respetando nombres y sorting orders:
+
+| Tilemap | Nombre | Sorting Order | Render Mode |
+|---------|--------|--------------:|-------------|
+| Suelo/pasto | libre | 0 | Group |
+| Agua | libre | 0 | Group |
+| Acantilados con colisión | `HillsCollition` | 5 | Group |
+| Muros invisibles del borde de colina | `HillBoundary` | 0 | Group |
+| Árboles con colisión | libre | 4 | **Individual** |
+| Árboles decorativos | libre | 4 | **Individual** |
+
+3. Arrastrar los prefabs a la escena: `Player`, `HealthCanvas` y `Enemy` (cada uno ya trae sus componentes, tags y referencias internas).
+4. Colocar pickups `HeartPickup` (cambiar `Type` por instancia si se quiere otro color) y los triggers `Entry`/`Exit` de la colina.
+5. Verificar en el Inspector: `Entry` y `Exit` con las listas de colliders **vacías** (se auto-cablean al Play).
+
+### Prefabs pendientes de crear (una sola vez)
+
+En el editor de Unity, arrastrar a `Assets/Prefabs`:
+- **Player** (con su hijo `SwordTrigger`): trae movimiento, ataque, vida PDA y el tag `Player` correcto.
+- **HealthCanvas** (con su hijo `Hearts`): trae el script `HealthUI` con sus referencias ya conectadas.
+- **Enemy**: tras el cambio de auto-puntos, queda 100% auto-contenido.
+
+---
+
 ## Pendiente / planeado
 
 > **Nota:** lo que sigue **no está implementado** todavía; es el diseño previsto para las próximas iteraciones del proyecto.

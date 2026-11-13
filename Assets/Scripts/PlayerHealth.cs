@@ -58,6 +58,13 @@ public class PlayerHealth : MonoBehaviour
         originalColor = spriteRenderer.color;
         rb = GetComponent<Rigidbody2D>();
 
+        // Auto-configuración para prefabs: si no hay UI asignada, busca la única
+        // HealthUI de la escena (así el prefab del jugador funciona en cualquier nivel)
+        if (healthUI == null)
+        {
+            healthUI = FindFirstObjectByType<HealthUI>();
+        }
+
         // Apila los corazones iniciales: el último de la lista queda en la cima
         foreach (HeartColor type in initialHearts)
         {
