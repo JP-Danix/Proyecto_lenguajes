@@ -10,6 +10,14 @@ public class PlayerMovement : MonoBehaviour
 
     void FixedUpdate()
     {
+        // Congela el movimiento y los parámetros de animación mientras ataca,
+        // así el ataque conserva la dirección y el personaje no camina.
+        if (animator.GetBool("isAttacking"))
+        {
+            rb.linearVelocity = Vector2.zero;
+            return;
+        }
+
         Vector2 movement = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
 
         // Solo actualizamos la dirección del Animator cuando nos movemos,
