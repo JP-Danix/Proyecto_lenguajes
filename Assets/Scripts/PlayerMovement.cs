@@ -3,6 +3,7 @@ using UnityEngine;
 public class PlayerMovement : MonoBehaviour
 {
     public float speed = 5;
+    public PlayerAttack playerAttack; // Referencia al script PlayerAttack
     public Rigidbody2D rb;
     public Animator animator;
     public SpriteRenderer spriteRenderer;
@@ -19,6 +20,7 @@ public class PlayerMovement : MonoBehaviour
             LastMoveDirection = movement;
             animator.SetFloat("Xinput", movement.x);
             animator.SetFloat("Yinput", movement.y);
+            playerAttack.SetLastMovementDirection(movement); // Actualiza la dirección en PlayerAttack
         }
 
         // Voltea el sprite según la última dirección horizontal
