@@ -2,25 +2,29 @@
 
 Videojuego **2D top-down tipo dungeon/Zelda**, con estética **pixel art**, desarrollado en **Unity 6** como proyecto del curso de **Lenguajes de Programación** de la **Unillanos** (Universidad de los Llanos).
 
-El objetivo académico del proyecto es aplicar teoría de **lenguajes formales y autómatas**: el comportamiento del jugador y del mapa se modela mediante autómatas finitos que se documentan en este README.
+El objetivo académico del proyecto es aplicar teoría de **lenguajes formales y autómatas**: el comportamiento del jugador, del enemigo, del mapa y del sistema de vida se modela mediante autómatas (AFD y PDA) que se documentan en este README, indicando en cada caso el archivo de código donde vive el concepto.
 
 ---
 
 ## Descripción del juego
 
-El jugador se mueve en 8 direcciones por un mundo construido con Tilemaps (pasto y colinas), con animaciones direccionales de caminar, idle y ataque. Al entrar en una colina, el mapa cambia su lógica de colisiones para que el jugador pueda recorrerla "por encima" del terreno.
+El jugador se mueve en 8 direcciones por un mundo construido con Tilemaps (pasto y colinas), con animaciones direccionales de caminar, idle y ataque. Hay un enemigo (hongo) que patrulla, persigue su ruta, daña al jugador por contacto y recibe daño de la espada del jugador con retroceso. La vida del jugador se modela como una **pila de corazones** de distintos colores, visualizada en la UI.
 
 Funcionalidades implementadas:
 
 - Movimiento del jugador con `Rigidbody2D` (8 direcciones).
-- Animaciones direccionales: caminar e idle mirando en 4 direcciones, ataque en 4 direcciones.
-- Sistema de ataque por clic izquierdo con cooldown y bloqueo de movimiento durante el ataque.
+- Animaciones direccionales: caminar e idle en 4 direcciones, ataque en 4 direcciones.
+- Sistema de ataque por clic izquierdo con cooldown, congelamiento de movimiento durante el ataque y golpe con la espada.
+- Enemigo con patrulla A/B, animaciones (idle, correr, daño), daño por contacto con cooldown, giro de rumbo al golpear y knockback al recibir daño.
+- Sistema de vida como autómata de pila (PDA): corazones Amarillo (3 golpes), Azul (2) y Rojo (1), con UI en pantalla y pickups en el mapa (teñidos según su tipo).
+- Efectos de combate: flash rojo y retroceso al recibir daño (jugador), retroceso del enemigo al ser golpeado.
 - Zonas de colina con colisiones y orden de renderizado dinámicos.
+- Profundidad top-down por sort del eje Y: árboles y rocas cubren al jugador cuando está detrás de ellos.
 
 ## Cómo correrlo
 
 1. Instalar **Unity 6.3 LTS**, versión exacta **6000.3.28f1** (recomendado vía Unity Hub).
-2. Clonar o descargar este repositorio.
+2. Clonar o descargar este repositorio (los sprites usan **Git LFS**).
 3. En Unity Hub: **Add project from disk** y seleccionar la carpeta raíz del repositorio.
 4. Abrir la escena `Assets/Scenes/SampleScene.unity`.
 5. Presionar **Play**.
@@ -31,10 +35,13 @@ Funcionalidades implementadas:
 |--------|---------|
 | Mover | Teclas de flechas / ejes `Horizontal` y `Vertical` de Input |
 | Atacar | Clic izquierdo del mouse |
+| Recoger corazón | Caminar sobre el pickup |
 
 ---
 
 ## Autómatas del proyecto
+
+Esta sección es la **columna vertebral académica** del proyecto: cada autómata indica qué modela, en qué archivo del código está implementado y de qué tipo formal es.
 
 ### 1. FSM del Animator del jugador
 
@@ -67,7 +74,7 @@ Funcionalidades implementadas:
 | `DownAtack` | `DownAtack.anim` | Ataque hacia abajo |
 
 - **Estado inicial:** `Player Tree`.
-- El flip izquierdo/derecha lo resuelve el **código** (`spriteRenderer.flipX` en `PlayerMovement.cs`), por eso los clips laterales se comparten entre izquierda y derecha.
+- El flip izquierda/derecha lo resuelve el **código** (`spriteRenderer.flipX` en `PlayerMovement.cs`), por eso los clips laterales se comparten entre izquierda y derecha.
 
 #### Tabla de transiciones
 
@@ -144,11 +151,73 @@ Los estados `Player Tree` y `PlayerIdle` no son estados con un único clip, sino
 
 ---
 
-### 2. FSM de las zonas del mapa (colinas)
+### 2. FSM del Animator del enemigo
+
+**Qué modela:** el comportamiento visual del hongo — quedarse quieto, correr por su patrulla y mostrar el golpe recibido.
+
+**Fuente:** `Assets/Animations/Enemy.controller` (referenciado desde la escena) + scripts `EnemyPatrol.cs` y `EnemyHealth.cs`.
+
+**Tipo:** AFD con guardas numéricas y booleanas. Igual que el del jugador, produce salida en los estados (la animación) y la alimentan otros scripts del juego, por lo que es un autómata "receptivo": sus entradas no vienen del teclado sino del resto del sistema.
+
+#### Alfabeto de entrada (parámetros del Animator)
+
+| Parámetro | Tipo | Escribe | Significado |
+|-----------|------|---------|-------------|
+| `Speed` | float | `EnemyPatrol.cs` | Magnitud de la velocidad actual (0 = quieto, > 0 = patrullando) |
+| `isHurt` | bool | `EnemyHealth.cs` | true durante 0.3 s cuando recibe daño (coroutina `HurtRoutine()`) |
+
+#### Estados
+
+| Estado | Clip | Rol |
+|--------|------|-----|
+| `EnemyIdle` | `EnemyIdle.anim` | El hongo está quieto (Speed ≈ 0) |
+| `EnemyRun` | `EnemyRun.anim` | El hongo camina entre sus puntos de patrulla |
+| `EnemyHit` | `EnemyHit.anim` | El hongo muestra su animación de daño (isHurt = true) |
+
+- **Estado inicial:** `EnemyIdle`.
+
+#### Tabla de transiciones
+
+| Estado actual | Condición de guarda | Estado destino |
+|---------------|---------------------|----------------|
+| `EnemyIdle` | `Speed > umbral` | `EnemyRun` |
+| `EnemyRun` | `Speed ≈ 0` | `EnemyIdle` |
+| `EnemyIdle` o `EnemyRun` | `isHurt == true` | `EnemyHit` |
+| `EnemyHit` | `isHurt == false` (tras `hurtDuration` = 0.3 s) | Estado anterior |
+
+#### Diagrama de estados
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "EnemyIdle" as Idle
+    state "EnemyRun" as Run
+    state "EnemyHit (daño)" as Hit
+
+    [*] --> Idle
+
+    Idle --> Run : Speed > umbral
+    Run --> Idle : Speed ≈ 0
+
+    Idle --> Hit : isHurt = true
+    Run --> Hit : isHurt = true
+    Hit --> Idle : isHurt = false (0.3 s)
+    Hit --> Run : isHurt = false (0.3 s)
+```
+
+#### Dónde vive cada parte del autómata
+
+- **La lógica de movimiento que alimenta `Speed`** está en `EnemyPatrol.cs` (`FixedUpdate`), que además gestiona el flip del sprite y el intercambio de punto A/B.
+- **La guarda temporal `isHurt`** la administra `EnemyHealth.cs` con una coroutina de 0.3 s, lo que convierte a `EnemyHit` en un estado con salida temporizada (un temporizador dentro del estado, como en un autómata temporizado).
+
+---
+
+### 3. FSM de las zonas del mapa (colinas)
 
 **Qué modela:** el cambio de reglas del mundo cuando el jugador entra o sale de una colina — qué colisiones están activas y en qué capa de renderizado se dibuja el jugador.
 
-**Fuente:** `HillEntry.cs` y `HillExit.cs`.
+**Fuente:** `Assets/Scripts/HillEntry.cs` y `Assets/Scripts/HillExit.cs`.
 
 **Tipo:** AFD dirigido por eventos físicos (`OnTriggerEnter2D`). No hay estados codificados explícitamente; los estados son las dos configuraciones del mundo que el código mantiene, y las transiciones son los disparadores del tilemap.
 
@@ -163,7 +232,7 @@ Los estados `Player Tree` y `PlayerIdle` no son estados con un único clip, sino
 
 | Estado | Colliders de colina | Colliders de límites | `sortingOrder` del jugador |
 |--------|--------------------:|---------------------:|---------------------------:|
-| **Fuera de la colina** | Activados | Desactivados | 5 |
+| **Fuera de la colina** | Activados | Desactivados | 4 (orden base) |
 | **Dentro de la colina** | Desactivados | Activados | 15 |
 
 #### Tabla de transiciones
@@ -171,7 +240,7 @@ Los estados `Player Tree` y `PlayerIdle` no son estados con un único clip, sino
 | Estado actual | Entrada | Estado siguiente | Acciones |
 |---------------|---------|------------------|----------|
 | Fuera | Cruza el trigger `HillEntry` | Dentro | Desactiva colliders de colina, activa límites, `sortingOrder = 15` |
-| Dentro | Cruza el trigger `HillExit` | Fuera | Activa colliders de colina, desactiva límites, `sortingOrder = 5` |
+| Dentro | Cruza el trigger `HillExit` | Fuera | Activa colliders de colina, desactiva límites, `sortingOrder = 4` |
 
 **Estado inicial:** Fuera de la colina (configuración por defecto de la escena).
 
@@ -190,6 +259,161 @@ stateDiagram-v2
 
 Con esta FSM el jugador puede caminar *sobre* la colina sin chocar con ella (los colliders de la colina se desactivan), pero queda contenido dentro del área por los límites, y se dibuja por encima del terreno gracias al `sortingOrder`.
 
+#### La profundidad por Y: del orden discreto al continuo
+
+Al bajar de la colina, el jugador debe volver a respetar la profundidad del mundo top-down: un árbol lo cubre si está detrás de él y lo deja ver si está delante. Resolverlo a mano con `sortingOrder` fijo falló en la práctica: el jugador regresaba con un orden por encima de los árboles y los "atravesaba" visualmente.
+
+La solución fue mover ese orden a una **entrada continua**: el proyecto usa el sort por transparencia con eje personalizado `(0, 1, 0)` (`ProjectSettings/GraphicsSettings.asset`, `TransparencySortMode: CustomAxis`), de modo que dos objetos con el mismo `sortingOrder` se ordenan por su posición Y — lo que está más abajo en pantalla se dibuja delante. Además, los Tilemaps de árboles usan **Modo de render = Individual** para que cada tile de árbol se ordene por separado contra el jugador.
+
+| Regla de profundidad | Cómo se decide |
+|----------------------|----------------|
+| Jugador vs árboles | Ambos en `sortingOrder` 4; decide la **Y continua** (posición en pantalla) |
+| Jugador sobre la colina | `sortingOrder` 15, por encima de todo (el estado "Dentro" de la FSM) |
+| Tilemaps de fondo | Órdenes fijos más bajos (el orden discreto domina sobre el eje Y) |
+
+Académicamente es la misma lección del blend tree aplicada al eje de profundidad: donde el AFD discreto (`sortingOrder` fijo por estado) era insuficiente, la generalización continua (Y como entrada real) resuelve el problema de forma natural.
+
+---
+
+### 4. El sistema de vida como autómata de pila (PDA)
+
+Este es el autómata más ambicioso del proyecto hasta ahora: la **vida del jugador no es una barra ni un número**, es un **autómata de pila (pushdown automaton, PDA)** completo.
+
+**Qué modela:** la resistencia del jugador como una pila LIFO de corazones, donde cada corazón es un símbolo con su propia "resistencia".
+
+**Fuente:** `Assets/Scripts/PlayerHealth.cs` (el autómata), `Assets/Scripts/HeartPickup.cs` (entrada PUSH desde el mundo) y `Assets/Scripts/HealthUI.cs` (visualización de la pila).
+
+**Tipo:** autómata de pila (PDA) determinista en la práctica: en cada momento la cima de la pila determina de forma única qué ocurre con el siguiente golpe o pickup.
+
+#### Alfabeto de entrada
+
+| Símbolo de entrada | Origen en el código | Efecto sobre la pila |
+|--------------------|---------------------|----------------------|
+| `daño` | `PlayerHealth.TakeDamage(damage, hitDirection)`, llamado por `EnemyContactDamage.cs` | Resta 1 golpe al corazón de la **cima**; si sus golpes llegan a 0, la cima sale de la pila (POP) |
+| `recoger(color)` | `PlayerHealth.PushHeart(type)`, llamado por `HeartPickup.cs` al tocar el pickup | Apila un corazón nuevo del color dado (PUSH); si la pila está llena, la entrada se **rechaza** y el pickup permanece en el mapa |
+
+#### Los símbolos de la pila (alfabeto de pila)
+
+Cada corazón es un objeto `Heart` con un tipo `HeartColor`. El tipo define cuántos golpes absorbe antes de romperse:
+
+| Símbolo (color) | Golpes que absorbe | Color de tinte en la UI |
+|-----------------|--------------------|-------------------------|
+| `Amarillo` | 3 | Amarillo `(1, 0.92, 0.23)` |
+| `Azul` | 2 | Azul `(0.2, 0.55, 1)` |
+| `Rojo` | 1 | Rojo `(0.95, 0.25, 0.25)` |
+
+Cada `Heart` guarda además `hitsLeft`, el "desgaste" actual del símbolo en la cima.
+
+#### Estados de control
+
+El PDA tiene tres configuraciones globales:
+
+| Estado | Condición | Salida |
+|--------|-----------|--------|
+| **Viva** | `hearts.Count > 0` | La UI dibuja la pila (ver abajo) |
+| **Vulnerable** | Viva ∧ `invulnerabilityTimer == 0` | Puede recibir `daño` |
+| **Invulnerable** | Viva ∧ `invulnerabilityTimer > 0` | Ignora `daño` (ventana de 0.5 s con parpadeo) |
+| **Rechazo (Game Over)** | `hearts.Count == 0` | La cadena de entrada no fue aceptada: el jugador muere |
+
+#### Reglas de transición de la pila
+
+| Estado de la pila | Entrada | Acción (transición) |
+|-------------------|---------|---------------------|
+| No llena (`Count < maxHearts`) | `recoger(color)` | PUSH: nuevo `Heart(color)` en la cima |
+| Llena (`Count == maxHearts`) | `recoger(color)` | **Rechaza** la entrada: no hay PUSH y el pickup no se consume |
+| Cima con `hitsLeft > 1` | `daño` | `hits--` sobre la cima (la pila no cambia de tamaño) |
+| Cima con `hitsLeft == 1` | `daño` | POP: la cima sale de la pila |
+| Vacía | `daño` | Estado de rechazo → **Game Over** |
+| Invulnerable (temporizador > 0) | `daño` | La entrada se ignora (0.5 s) |
+
+#### Diagrama
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "Pila de corazones (LIFO)" as Stack {
+        state "Cima: corazones con hitsLeft" as Top
+    }
+
+    state "Viva" as Alive
+    state "Invulnerable (0.5 s)" as Inv
+    state "Game Over (rechazo)" as Dead
+
+    [*] --> Alive : PUSH inicial (hearts de la lista)
+
+    Alive --> Alive : recoger(color) y pila no llena → PUSH
+    Alive --> Alive : daño y cima hitsLeft > 1 → hits--
+    Alive --> Alive : daño y cima hitsLeft = 1 → POP
+    Alive --> Inv : daño → flash + knockback + i-frames
+    Inv --> Alive : termina el temporizador de 0.5 s
+    Alive --> Dead : daño con pila vacía
+```
+
+#### La UI como espejo de la pila
+
+`HealthUI.Refresh(Stack<Heart>)` en `Assets/Scripts/HealthUI.cs` recorre la pila de la **cima hacia abajo** y dibuja un icono por corazón dentro de un `Horizontal Layout Group`:
+
+- El **primer icono (izquierda) es la cima**: el corazón que recibe el daño primero.
+- El icono se **tinta** con el color del tipo (`Image.color` sobre un sprite base gris, `Assets/Sprites/Heart 1.png`), con iconos de 80×80 en pantalla.
+- El icono se **oscurece** proporcionalmente a los golpes perdidos (`Color.Lerp` hacia negro según `hitsLeft`).
+
+Es decir, la UI es una función pura de la pila: `pantalla = dibujar(pila)`. No guarda estado propio; se redibuja completa en cada transición (`NotifyUI()`).
+
+Los **pickups del mapa** también visten el color de su tipo: `HeartPickup.cs` tinta su `SpriteRenderer` en `Start()` con la misma paleta de la UI, así el corazón del mundo se ve idéntico al icono que aparecerá al recogerlo. (El tinte es multiplicativo, por eso el sprite base tiene relleno gris claro.)
+
+#### Dónde vive cada parte del PDA
+
+| Concepto formal | Implementación |
+|-----------------|----------------|
+| Alfabeto de entrada | Métodos `TakeDamage()` y `PushHeart()` (las dos únicas "letras" que el autómata lee) |
+| Alfabeto de pila | Enum `HeartColor` (Amarillo=3, Azul=2, Rojo=1) y clase `Heart` |
+| La pila | `Stack<Heart> hearts` en `PlayerHealth.cs` |
+| Función de transición | El `for` dentro de `TakeDamage()` y las guardas de `PushHeart()` |
+| Estado de rechazo | `hearts.Count == 0` → "Game Over" |
+| Estado invulnerable con temporizador | `invulnerabilityTimer` (0.5 s de parpadeo) |
+
+---
+
+### 5. Guardas temporales (relojes dentro de los autómatas)
+
+Varias transiciones de los autómatas anteriores no dependen solo de la entrada, sino también del **tiempo transcurrido**. Conceptualmente son autómatas temporizados: cada temporizador es una guarda que debe satisfacerse para que la transición ocurra.
+
+| Temporizador | Valor | Dónde está | Qué guarda |
+|--------------|-------|------------|------------|
+| Cooldown de ataque del jugador | 0.3 s | `PlayerAttack.cs` (`attackCooldown`) | No puede iniciarse un nuevo ataque antes de 0.3 s |
+| Duración del ataque | 0.4 s | `PlayerAttack.cs` (`attackDuration`) | Respaldo del Animation Event que termina el ataque |
+| Cooldown de golpe conectado | 0.5 s | `PlayerSword.cs` (`hitCooldown`) | Dos ataques seguidos no cuentan como doble golpe al enemigo |
+| Cooldown de ataque del enemigo | 1.0 s | `EnemyContactDamage.cs` (`attackCooldown`) | Un contacto prolongado no drena la pila: 1 golpe por segundo como máximo |
+| Invulnerabilidad del jugador | 0.5 s | `PlayerHealth.cs` (`invulnerabilityTime`) | Tras recibir daño, ignora nuevos golpes y parpadea |
+| Flash de daño | 0.15 s | `PlayerHealth.cs` (`flashDuration`) | Duración del tinte rojo fuerte al recibir el golpe |
+| Duración del "hurt" del enemigo | 0.3 s | `EnemyHealth.cs` (`hurtDuration`) | Cuánto tiempo permanece la guarda `isHurt == true` |
+| Duración del knockback (jugador) | 0.2 s | `PlayerHealth.cs` (`knockbackDuration`) | Tiempo sin control del movimiento mientras actúa el retroceso |
+| Duración del knockback (enemigo) | 0.15 s | `PlayerSword.cs` (`enemyKnockbackDuration`) | Tiempo sin patrulla mientras actúa el retroceso del enemigo |
+
+Estas guardas resuelven un problema clásico de modelado: los eventos físicos de Unity (`OnCollisionStay2D`, `OnTriggerStay2D`) ocurren **cada frame**, pero las transiciones del autómata deben ser discretas. Los temporizadores convierten un flujo continuo de eventos en símbolos discretos del alfabeto.
+
+---
+
+## Combate bidireccional (cómo interactúan los autómatas)
+
+Los autómatas de las secciones anteriores no viven aislados: se comunican. Este es el flujo completo de un intercambio de golpes:
+
+**El jugador golpea al enemigo:**
+
+1. Clic → `PlayerAttack.cs` activa `isAttacking` (FSM del jugador, sección 1) y congela el movimiento.
+2. `PlayerSword.cs` (en el hijo `SwordTrigger`) coloca el trigger delante del jugador según `Xinput`/`Yinput`.
+3. Si el trigger toca un objeto con tag `Enemy` → `EnemyHealth.TakeDamage()` → guarda `isHurt` 0.3 s (FSM del enemigo, sección 2) + knockback vía `EnemyPatrol.ApplyKnockback()`.
+4. Al terminar el clip, Animation Event → `ResetAttack()` → regreso a idle.
+
+**El enemigo golpea al jugador:**
+
+1. Contacto físico → `EnemyContactDamage.cs`: en `OnCollisionEnter2D` llama `EnemyPatrol.TurnAround()` (el hongo da media vuelta y se retira) y en `OnCollisionStay2D` aplica daño si su cooldown de 1 s lo permite.
+2. `PlayerHealth.TakeDamage()` consume golpes de la cima de la pila (PDA, sección 4), aplica flash rojo (0.15 s), knockback (0.2 s) e invulnerabilidad (0.5 s).
+3. `PlayerMovement.cs` consulta `IsKnockedBack` para no pelear con el retroceso (y `animator.GetBool("isAttacking")` para no caminar durante el ataque).
+
+El knockback en ambos sentidos existe para que la "coreografía" del duelo sea legible: cada golpe separa físicamente a los combatientes y devuelve el control a los autómatas de movimiento tras su ventana temporizada.
+
 ---
 
 ## Pendiente / planeado
@@ -199,19 +423,24 @@ Con esta FSM el jugador puede caminar *sobre* la colina sin chocar con ella (los
 - **Autómata finito para los mapas:** FSM que modele el cambio completo de escena/zona al transitar entre mapas (más allá de las colinas actuales).
 - **Autómata de pila (PDA) para los mapas:** estructura con memoria de contexto para manejar jerarquías de zonas (p. ej., mundo → dungeon → sala), donde regresar implica desapilar el mapa anterior.
 - **Sistema de combos de teclas:** el jugador ejecuta **secuencias de teclas**; si la secuencia coincide con un patrón válido del "diccionario" de combos, se lanza **un proyectil distinto por combo**; si la secuencia no coincide con ningún patrón, **no ocurre nada**. Conceptualmente, un reconocedor de cadenas (trie/AFD sobre el alfabeto de teclas) alimentando una pila de proyectiles (PDA).
+- **Game Over visual:** hoy el rechazo del PDA destruye al jugador con un log en Console; falta pantalla de muerte/respawn.
 
 ---
 
 ## Relación con el curso (lenguajes formales y autómatas)
 
-| Elemento del proyecto | Concepto del curso que ilustra |
-|-----------------------|-------------------------------|
-| FSM del Animator | **Autómata finito determinista (AFD)**: estados, alfabeto de entrada, función de transición por guardas y estado inicial definido. Es además un **híbrido Moore/Mealy**: cada estado produce salida (la animación) y algunas transiciones también tienen acciones (congelar velocidad). |
-| Blend trees 2D | **Generalización continua del AFD**: la entrada no es un símbolo discreto sino un vector en ℝ²; el plano se particiona en regiones y la salida interpola entre clips. |
-| FSM de zonas (colinas) | **AFD dirigido por eventos** (reconocimiento de eventos físicos del tilemap), con acciones asociadas a cada transición. |
-| Ciclo de ataque con Animation Event | Distinción entre **entrada de la FSM** (`isAttacking`) y **acciones de salida** (`ResetAttack()` como evento generado por la animación), y el papel de las **guardas temporales** (cooldown, exit time). |
-| Combos de teclas (planeado) | **Reconocimiento de cadenas** sobre un alfabeto: un trie o AFD que acepta exactamente las secuencias válidas, y una **pila** para manejar los proyectiles lanzados — aplicación directa de **AFD y PDA**. |
-| Autómatas de mapas (planeado) | AFD para navegación entre zonas y **autómata de pila (PDA)** para la jerarquía de mapas (apilar/desapilar el contexto de ubicación). |
+| Elemento del proyecto | Concepto del curso que ilustra | Dónde se usa |
+|-----------------------|-------------------------------|--------------|
+| FSM del Animator del jugador | **Autómata finito determinista (AFD)**: estados, alfabeto de entrada, función de transición por guardas y estado inicial definido. Es además un **híbrido Moore/Mealy**: cada estado produce salida (la animación) y algunas transiciones también tienen acciones (congelar velocidad). | `Assets/Animations/Player.controller`, `PlayerMovement.cs`, `PlayerAttack.cs` |
+| Blend trees 2D | **Generalización continua del AFD**: la entrada no es un símbolo discreto sino un vector en ℝ²; el plano se particiona en regiones y la salida interpola entre clips. | Estados `Player Tree` y `PlayerIdle` del `Player.controller` |
+| FSM del Animator del enemigo | **AFD receptivo**: sus entradas no son del jugador sino del resto del sistema (`Speed`, `isHurt`), con un estado temporizado (`EnemyHit`). | `Assets/Animations/Enemy.controller`, `EnemyPatrol.cs`, `EnemyHealth.cs` |
+| FSM de zonas (colinas) | **AFD dirigido por eventos** (reconocimiento de eventos físicos del tilemap), con acciones asociadas a cada transición. | `HillEntry.cs`, `HillExit.cs` |
+| Sort de profundidad por eje Y | **Generalización continua de la profundidad**: cuando el orden discreto (`sortingOrder` fijo) era insuficiente, la posición Y continua decide el orden de dibujo (Transparency Sort Mode Custom Axis + tilemaps en modo Individual). | `ProjectSettings/GraphicsSettings.asset`, Tilemap Renderers de árboles |
+| Sistema de vida | **Autómata de pila (PDA)**: alfabeto de entrada (daño, recoger), alfabeto de pila (colores de corazón), PUSH/POP, estado de rechazo = Game Over. La UI es una función de la pila. | `PlayerHealth.cs`, `HeartPickup.cs`, `HealthUI.cs` |
+| Guardas temporales | **Autómatas temporizados**: transiciones condicionadas por tiempo acumulado; convierten eventos continuos por frame en símbolos discretos. | Cooldowns en `PlayerAttack.cs`, `PlayerSword.cs`, `EnemyContactDamage.cs`, `PlayerHealth.cs` |
+| Ciclo de ataque con Animation Event | Distinción entre **entrada de la FSM** (`isAttacking`) y **acciones de salida** (`ResetAttack()` como evento generado por la animación), y el papel de las **guardas temporales** (cooldown, exit time). | `PlayerAttack.cs` + clips de ataque |
+| Combos de teclas (planeado) | **Reconocimiento de cadenas** sobre un alfabeto: un trie o AFD que acepta exactamente las secuencias válidas, y una **pila** para manejar los proyectiles lanzados — aplicación directa de **AFD y PDA**. | Pendiente |
+| Autómatas de mapas (planeado) | AFD para navegación entre zonas y **autómata de pila (PDA)** para la jerarquía de mapas (apilar/desapilar el contexto de ubicación). | Pendiente |
 
 ---
 
@@ -220,20 +449,37 @@ Con esta FSM el jugador puede caminar *sobre* la colina sin chocar con ella (los
 ```
 Proyecto_lenguajes/
 ├── Assets/
-│   ├── Animations/          # Clips .anim y Player.controller (la FSM del jugador)
+│   ├── Animations/          # Clips .anim + Player.controller y Enemy.controller (las FSM)
 │   ├── Scenes/              # SampleScene.unity (escena principal)
 │   ├── Scripts/             # Código C#
-│   │   ├── PlayerMovement.cs   # Movimiento y parámetros Xinput/Yinput/Speed
-│   │   ├── PlayerAttack.cs     # Activación del ataque (isAttacking) y cooldown
-│   │   ├── HillEntry.cs        # Transición a "Dentro de la colina"
-│   │   └── HillExit.cs         # Transición a "Fuera de la colina"
-│   ├── Sprites/             # Pixel art (jugador, tiles de pasto y colinas)
-│   ├── Prefabs/             # Prefabs (vacío por ahora)
-│   ├── UI/                  # Interfaz (vacía por ahora)
+│   │   ├── PlayerMovement.cs        # Movimiento; congela animación y velocidad al atacar o recibir knockback
+│   │   ├── PlayerAttack.cs          # isAttacking + cooldown 0.3 s + duración 0.4 s
+│   │   ├── PlayerSword.cs           # Hitbox de la espada; hitCooldown 0.5 s; knockback al enemigo
+│   │   ├── PlayerHealth.cs          # PDA de la vida: Stack<Heart>, PUSH/POP, flash, knockback, i-frames
+│   │   ├── HealthUI.cs              # Dibuja la pila de corazones (tinte + oscurecido por daño)
+│   │   ├── HeartPickup.cs           # Trigger de recogida: PUSH a la pila (si no está llena)
+│   │   ├── EnemyPatrol.cs           # Patrulla A/B; escribe Speed; TurnAround(); ApplyKnockback()
+│   │   ├── EnemyHealth.cs           # Vida del enemigo; isHurt 0.3 s (coroutina)
+│   │   ├── EnemyContactDamage.cs    # Daño por contacto; cooldown 1 s; TurnAround() al iniciar contacto
+│   │   ├── HillEntry.cs             # Transición a "Dentro de la colina"
+│   │   └── HillExit.cs              # Transición a "Fuera de la colina"
+│   ├── Sprites/             # Pixel art (jugador, hongo, tiles, colinas, deco, agua, Heart 1.png)
+│   ├── Prefabs/             # HeartIcon.prefab (icono de la UI) y HeartPickup.prefab (corazón recogible)
 │   └── Settings/            # Configuración URP y Input System
 ├── Packages/                # Dependencias (manifest.json)
 └── ProjectSettings/         # Configuración del proyecto Unity
 ```
+
+### Componentes de escena relevantes (configuración en el editor de Unity)
+
+| Objeto | Componentes clave | Notas |
+|--------|-------------------|-------|
+| `Player` | `PlayerMovement`, `PlayerAttack`, `PlayerHealth` | Tag obligatorio: `Player` (lo usan HillEntry/HillExit y HeartPickup). `Initial Hearts` se apila en orden: el último de la lista queda en la cima |
+| `SwordTrigger` (hijo de Player) | Collider 2D (trigger) + `PlayerSword` | Se posiciona delante del jugador según `Xinput`/`Yinput` |
+| `Enemy` | `EnemyPatrol`, `EnemyHealth`, `EnemyContactDamage` | Tag: `Enemy`. Requiere `pointA`/`pointB` asignados |
+| `HealthCanvas` > `Hearts` | `HealthUI` + Horizontal Layout Group | El primer icono (izquierda) es la cima de la pila; iconos de 80×80 |
+| `HeartPickup` | Sprite + Circle Collider 2D (Is Trigger) + `HeartPickup` | Campo `Type` define el color que hace PUSH; el script tinta el sprite según el tipo |
+| Tilemaps `TreeCollition` / `TreeNotCollition` | Tilemap Collider 2D + Tilemap Renderer (Modo Individual, Order 4) | Mismo orden que el jugador: la profundidad la decide el sort por eje Y |
 
 ---
 

@@ -19,7 +19,9 @@ public class HillExit : MonoBehaviour
                 boundary.enabled = false;
             }
 
-            collision.gameObject.GetComponent<SpriteRenderer>().sortingOrder = 5;
+            // Vuelve al sorting order base (4, igual que los árboles): con el sort
+            // por eje Y configurado, la posición del jugador decide quién se dibuja encima
+            collision.gameObject.GetComponent<SpriteRenderer>().sortingOrder = 4;
         }
     }
 }

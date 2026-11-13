@@ -10,6 +10,9 @@ public class EnemyPatrol : MonoBehaviour
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
     private Vector2 target;
+    private float knockbackTimer;
+
+    public bool IsKnockedBack => knockbackTimer > 0f;
 
     void Start()
     {
@@ -18,8 +21,26 @@ public class EnemyPatrol : MonoBehaviour
         target = pointB.position;
     }
 
+    // Lo llama PlayerSword al golpear: el enemigo sale despedido y no controla su rumbo un momento
+    public void ApplyKnockback(Vector2 direction, float force, float duration)
+    {
+        rb.linearVelocity = direction * force;
+        knockbackTimer = duration;
+    }
+
+    void Update()
+    {
+        if (knockbackTimer > 0f) knockbackTimer -= Time.deltaTime;
+    }
+
     void FixedUpdate()
     {
+        // Durante el retroceso no controla su propio movimiento
+        if (knockbackTimer > 0f)
+        {
+            return;
+        }
+
         Vector2 direction = (target - (Vector2)transform.position).normalized;
         rb.linearVelocity = direction * speed;
 
@@ -42,5 +63,13 @@ public class EnemyPatrol : MonoBehaviour
                 ? (Vector2)pointB.position
                 : (Vector2)pointA.position;
         }
+    }
+
+    // Invierte el rumbo de la patrulla (lo usa EnemyContactDamage al golpear al jugador)
+    public void TurnAround()
+    {
+        target = target == (Vector2)pointA.position
+            ? (Vector2)pointB.position
+            : (Vector2)pointA.position;
     }
 }

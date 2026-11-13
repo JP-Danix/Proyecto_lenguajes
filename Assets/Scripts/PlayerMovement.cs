@@ -7,6 +7,12 @@ public class PlayerMovement : MonoBehaviour
     public Animator animator;
     public SpriteRenderer spriteRenderer;
     private Vector2 LastMoveDirection = Vector2.down;
+    private PlayerHealth playerHealth;
+
+    void Start()
+    {
+        playerHealth = GetComponent<PlayerHealth>();
+    }
 
     void FixedUpdate()
     {
@@ -15,6 +21,12 @@ public class PlayerMovement : MonoBehaviour
         if (animator.GetBool("isAttacking"))
         {
             rb.linearVelocity = Vector2.zero;
+            return;
+        }
+
+        // Durante el retroceso no controla el movimiento (lo maneja el knockback)
+        if (playerHealth != null && playerHealth.IsKnockedBack)
+        {
             return;
         }
 

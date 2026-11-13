@@ -34,10 +34,30 @@ public class PlayerHealth : MonoBehaviour
     };
     public HealthUI healthUI;
 
+    [Header("Efectos al recibir daño")]
+    public Color flashColor = Color.red;
+    public float flashDuration = 0.15f;      // flash fuerte al recibir el golpe
+    public float invulnerabilityTime = 0.5f; // parpadeo + invulnerabilidad después
+    public float knockbackForce = 4f;        // fuerza del retroceso
+    public float knockbackDuration = 0.2f;   // cuánto tiempo el jugador no controla el movimiento
+
     private readonly Stack<Heart> hearts = new Stack<Heart>(); // la cima es el último apilado
+    private SpriteRenderer spriteRenderer;
+    private Rigidbody2D rb;
+    private Color originalColor;
+    private float invulnerabilityTimer;
+    private float flashTimer;
+    private float knockbackTimer;
+
+    // El movimiento consulta esto para no pelear con el retroceso
+    public bool IsKnockedBack => knockbackTimer > 0f;
 
     void Start()
     {
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        originalColor = spriteRenderer.color;
+        rb = GetComponent<Rigidbody2D>();
+
         // Apila los corazones iniciales: el último de la lista queda en la cima
         foreach (HeartColor type in initialHearts)
         {
@@ -46,12 +66,38 @@ public class PlayerHealth : MonoBehaviour
         NotifyUI();
     }
 
-    public void TakeDamage(int damage)
+    void Update()
     {
+        if (invulnerabilityTimer > 0f) invulnerabilityTimer -= Time.deltaTime;
+        if (knockbackTimer > 0f) knockbackTimer -= Time.deltaTime;
+
+        // Color del sprite: flash fuerte -> parpadeo -> color normal
+        if (flashTimer > 0f)
+        {
+            flashTimer -= Time.deltaTime;
+            spriteRenderer.color = flashColor;
+        }
+        else if (invulnerabilityTimer > 0f)
+        {
+            spriteRenderer.color = Mathf.Repeat(invulnerabilityTimer * 10f, 1f) > 0.5f
+                ? flashColor
+                : originalColor;
+        }
+        else
+        {
+            spriteRenderer.color = originalColor;
+        }
+    }
+
+    public void TakeDamage(int damage, Vector2 hitDirection)
+    {
+        if (invulnerabilityTimer > 0f) return; // invulnerable: ignora el golpe
+
         for (int i = 0; i < damage && hearts.Count > 0; i++)
         {
             Heart top = hearts.Peek();
             top.hitsLeft--;
+            Debug.Log("Golpe al corazón " + top.type + " (le quedan " + top.hitsLeft + " golpes)");
 
             if (top.hitsLeft <= 0)
             {
@@ -64,6 +110,17 @@ public class PlayerHealth : MonoBehaviour
         {
             Debug.Log("Game Over");
             Destroy(gameObject); // luego: respawn o pantalla de muerte
+            return;
+        }
+
+        invulnerabilityTimer = invulnerabilityTime;
+        flashTimer = flashDuration;
+
+        // Retroceso: empuja al jugador en la dirección del golpe
+        if (rb != null && hitDirection != Vector2.zero)
+        {
+            rb.linearVelocity = hitDirection * knockbackForce;
+            knockbackTimer = knockbackDuration;
         }
         NotifyUI();
     }
