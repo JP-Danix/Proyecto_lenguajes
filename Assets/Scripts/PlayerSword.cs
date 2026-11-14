@@ -44,12 +44,12 @@ public class PlayerSword : MonoBehaviour
             hasHit = true;
             hitTimer = hitCooldown;
 
-            // Knockback al enemigo: se aleja del jugador
-            EnemyPatrol patrol = collision.GetComponent<EnemyPatrol>();
+            // Knockback al enemigo: se aleja del jugador (funciona con cualquier patrulla que implemente IEnemigoMovil)
+            IEnemigoMovil movil = collision.GetComponent<IEnemigoMovil>();
             Vector2 direction = ((Vector2)collision.transform.position - (Vector2)transform.parent.position).normalized;
-            if (patrol != null)
+            if (movil != null)
             {
-                patrol.ApplyKnockback(direction, enemyKnockbackForce, enemyKnockbackDuration);
+                movil.ApplyKnockback(direction, enemyKnockbackForce, enemyKnockbackDuration);
             }
             else
             {

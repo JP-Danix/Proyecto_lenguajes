@@ -33,9 +33,10 @@ public class EnemyContactDamage : MonoBehaviour
     private void OnCollisionEnter2D(Collision2D collision)
     {
         // Solo al INICIAR el contacto: golpea y da media vuelta (no se queda pegado drenando)
+        // Funciona con cualquier patrulla que implemente IEnemigoMovil
         if (collision.gameObject.CompareTag("Player"))
         {
-            GetComponent<EnemyPatrol>()?.TurnAround();
+            GetComponent<IEnemigoMovil>()?.TurnAround();
         }
     }
 }

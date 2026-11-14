@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class EnemyPatrol : MonoBehaviour
+public class EnemyPatrol : MonoBehaviour, IEnemigoMovil
 {
     public float speed = 2f;
     public Transform pointA;

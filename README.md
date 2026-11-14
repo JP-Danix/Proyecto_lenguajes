@@ -15,12 +15,12 @@ Funcionalidades implementadas:
 - Movimiento del jugador con `Rigidbody2D` (8 direcciones).
 - Animaciones direccionales: caminar e idle en 4 direcciones, ataque en 4 direcciones.
 - Sistema de ataque por clic izquierdo con cooldown, congelamiento de movimiento durante el ataque y golpe con la espada.
-- Enemigo con patrulla A/B, animaciones (idle, correr, daño), daño por contacto con cooldown, giro de rumbo al golpear y knockback al recibir daño.
+- Enemigos con dos tipos de patrulla: **ida y vuelta A/B** (`EnemyPatrol.cs`) y **ruta de 3 puntos de ida y vuelta** (`EnemyPatrol3Puntos.cs`, P1→P2→P3→P2→P1, ideal para rutas en L). Ambas implementan la interfaz `IEnemigoMovil`, el contrato que usan el knockback de la espada y la media vuelta por contacto. Animaciones (idle, correr, daño), daño por contacto con cooldown y knockback al recibir daño.
 - Sistema de vida como autómata de pila (PDA): corazones Amarillo (3 golpes), Azul (2) y Rojo (1), con UI en pantalla y pickups en el mapa (teñidos según su tipo).
 - Efectos de combate: flash rojo y retroceso al recibir daño (jugador), retroceso del enemigo al ser golpeado.
 - Zonas de colina con colisiones y orden de renderizado dinámicos.
 - Profundidad top-down por sort del eje Y: árboles y rocas cubren al jugador cuando está detrás de ellos.
-- Sistema de magia por combos: secuencias de teclas validadas por una **gramática regular** (sección 6); cada cadena aceptada lanza un proyectil distinto (fuego, hielo o magia) animado, que vuela hacia la dirección de mira, gira según el trayecto, daña al enemigo y muere contra los muros sólidos.
+- Sistema de magia por combos: secuencias de teclas validadas por una **gramática de traducción** (sección 6); cada cadena aceptada — que trae su propia dirección y comando — lanza un proyectil distinto (fuego, hielo o magia) animado, que vuela hacia la dirección indicada como primer símbolo del combo, gira según el trayecto, daña al enemigo y muere contra los muros sólidos.
 
 ## Cómo correrlo
 
@@ -37,11 +37,11 @@ Funcionalidades implementadas:
 | Mover | Teclas de flechas / ejes `Horizontal` y `Vertical` de Input |
 | Atacar | Clic izquierdo del mouse |
 | Recoger corazón | Caminar sobre el pickup |
-| Combo **Fuego** | `B`, `B`, `N` (teclear rápido: menos de 0.4 s entre teclas) |
-| Combo **Hielo** | `B`, `N`, `M` |
-| Combo **Magia** | `B`, `G` |
+| Combo **Fuego** | `W`/`A`/`S`/`D` (dirección) + `B`, `B`, `N` + `Espacio` |
+| Combo **Hielo** | dirección + `B`, `N`, `M` + `Espacio` |
+| Combo **Magia** | dirección + `B`, `G` + `Espacio` |
 
-> Los combos usan letras del alfabeto, que no mueven al jugador: se puede mantener la dirección de mira mientras se teclea la secuencia. El proyectil sale hacia donde el jugador mira (`Xinput`/`Yinput`).
+> Toda cadena de combo tiene la forma **dirección · combo · `Espacio`**: el primer símbolo fija la dirección del proyectil (y viaja dentro de la cadena), y las letras del combo no mueven al jugador. El efecto es, así, función exclusiva de la cadena tecleada.
 
 ---
 
@@ -214,7 +214,11 @@ stateDiagram-v2
 
 #### Dónde vive cada parte del autómata
 
-- **La lógica de movimiento que alimenta `Speed`** está en `EnemyPatrol.cs` (`FixedUpdate`), que además gestiona el flip del sprite y el intercambio de punto A/B.
+- **La lógica de movimiento que alimenta `Speed`** está en `EnemyPatrol.cs` (`FixedUpdate`), que además gestiona el flip del sprite y el intercambio de punto A/B (ping-pong clásico). `TurnAround()` invierte el punto destino.
+
+Existe una variante, `EnemyPatrol3Puntos.cs`, para rutas de **exactamente 3 puntos recorridas de ida y vuelta** (`P1 → P2 → P3 → P2 → P1`): el enemigo recorre la ruta completa y regresa por sus propios pasos — útil para rutas en L sin diagonales. En los extremos (`P1` y `P3`) invierte el rumbo; en el punto central (el codo de la L) simplemente continúa.
+
+Ambas patrullas implementan la **interfaz `IEnemigoMovil`** (`TurnAround()` y `ApplyKnockback()`): `PlayerSword.cs` y `EnemyContactDamage.cs` obtienen el componente por interfaz (`GetComponent<IEnemigoMovil>()`), así que los sistemas de combate funcionan con cualquier tipo de patrulla presente o futura sin conocer su clase concreta (polimorfismo de interfaz).
 - **La guarda temporal `isHurt`** la administra `EnemyHealth.cs` con una coroutina de 0.3 s, lo que convierte a `EnemyHit` en un estado con salida temporizada (un temporizador dentro del estado, como en un autómata temporizado).
 
 ---
@@ -396,9 +400,10 @@ Varias transiciones de los autómatas anteriores no dependen solo de la entrada,
 | Duración del "hurt" del enemigo | 0.3 s | `EnemyHealth.cs` (`hurtDuration`) | Cuánto tiempo permanece la guarda `isHurt == true` |
 | Duración del knockback (jugador) | 0.2 s | `PlayerHealth.cs` (`knockbackDuration`) | Tiempo sin control del movimiento mientras actúa el retroceso |
 | Duración del knockback (enemigo) | 0.15 s | `PlayerSword.cs` (`enemyKnockbackDuration`) | Tiempo sin patrulla mientras actúa el retroceso del enemigo |
-| Timeout de la gramática de combos | 0.4 s | `ComboController.cs` (`timeout`) | Sin teclas durante 0.4 s, la cadena a medias se cancela y el autómata vuelve al estado inicial |
 
 Estas guardas resuelven un problema clásico de modelado: los eventos físicos de Unity (`OnCollisionStay2D`, `OnTriggerStay2D`) ocurren **cada frame**, pero las transiciones del autómata deben ser discretas. Los temporizadores convierten un flujo continuo de eventos en símbolos discretos del alfabeto.
+
+> Nota: la gramática de combos **no usa guardas temporales** (ver sección 6): el fin de cada cadena lo marca el jugador con el símbolo delimitador (`Espacio`), que forma parte del alfabeto de la gramática.
 
 ---
 
@@ -414,17 +419,48 @@ Este sistema es la aplicación más directa del curso: el **lenguaje de los comb
 
 #### Alfabeto
 
-El alfabeto lógico es el conjunto de teclas que `LeerSimbolo()` reconoce: **flechas, WASD y las letras A-Z**. Cada tecla presionada es un símbolo de entrada; las flechas y WASD se normalizan a los símbolos de flecha (ambas formas producen el mismo símbolo lógico).
+El alfabeto lógico es el conjunto de teclas que `LeerSimbolo()` reconoce: **símbolos de dirección (flechas o WASD, normalizados a `↑ ↓ ← →`), las letras A-Z y el símbolo delimitador ⊢ (la tecla Espacio)**. Cada tecla presionada es un símbolo de entrada.
 
-Las producciones usan letras (`B`, `N`, `M`, `G`) por una ventaja práctica: **no mueven al jugador**, así que se puede mantener la dirección de mira mientras se teclea el combo.
+> Nota: `W`, `A`, `S` y `D` están **reservadas** como símbolos de dirección y nunca producen símbolo de letra — el alfabeto efectivo de letras de combo es A-Z menos esas cuatro. Una producción que las usara como letras sería **muerta** (inalcanzable por la entrada).
+
+Toda cadena tiene la forma **`dirección · combo · ⊢`**: el primer símbolo **fija la dirección del lanzamiento** y viaja dentro de la cadena como el resto — el efecto del hechizo es función exclusiva de la cadena tecleada, sin estado externo (el componente ya no lee al Animator).
+
+El delimitador `⊢` es la pieza que hace la gramática "de libro": el jugador mismo **cierra la cadena** con Espacio, de modo que el reconocedor procesa siempre cadenas finitas completas, sin lógica temporal. Una cadena a medias se cancela con el propio delimitador (que la rechaza) o con cualquier símbolo no esperado.
+
+Las producciones usan letras (`B`, `N`, `M`, `G`) por una ventaja práctica: **no mueven al jugador**, así que la secuencia se teclea sin alterar la dirección elegida al inicio.
 
 #### Producciones de la gramática (serializadas en el Inspector)
 
-| Producción | Cadena | Estado de aceptación produce (salida Mealy) | Daño |
-|------------|--------|---------------------------------------------|------|
-| `Fuego` | `B B N` | Proyectil `Fireball` | 1 |
-| `Hielo` | `B N M` | Proyectil `Iceball` | 1 |
-| `Magia` | `B G` | Proyectil `Magicball` | 1 |
+El Inspector guarda solo el **camino del combo** (las letras); la dirección inicial y el delimitador los agrega el compilador. Con `dir` = cualquiera de los 4 símbolos de dirección:
+
+| Producción (sintaxis) | Cadena completa | Terminal semántico | Acción (tabla de símbolos) | Daño |
+|-----------------------|-----------------|--------------------|----------------------------|------|
+| `Fuego` | `dir B B N ⊢` | `fuego` | Instancia `Fireball` | 1 |
+| `Hielo` | `dir B N M ⊢` | `hielo` | Instancia `Iceball` | 1 |
+| `Magia` | `dir B G ⊢` | `magia` | Instancia `Magicball` | 1 |
+
+El lenguaje generado son **cadenas que traen su propia dirección y su propio comando**:
+
+```
+L(G) = { dir·bbn·⊢·fuego, dir·bnm·⊢·hielo, dir·bg·⊢·magia }    (dir ∈ {↑, ↓, ←, →})
+```
+
+Cada derivación termina en un **terminal semántico** (`fuego`, `hielo`, `magia`) que viaja dentro de la cadena generada — es la estructura de una **gramática de traducción**, la misma de los esquemas de traducción de los compiladores. La derivación de un disparo de fuego hacia arriba se lee:
+
+```
+S ⇒ w S_w ⇒ wb A_w ⇒ wbb B_w ⇒ wbbn⊢fuego↑
+```
+
+El compilador (`CompilarGramatica()`) agrega el símbolo delimitador al final de cada producción (y si el usuario lo escribiera a mano, lo respeta en vez de duplicarlo), y construye el camino de cada producción **en 4 copias, una por dirección**, porque la dirección elegida al inicio debe recordarse en los estados hasta la aceptación (un AFD solo recuerda en sus estados).
+
+#### Sintaxis vs. semántica: la tabla de símbolos
+
+Una gramática solo dice **qué cadenas pertenecen al lenguaje** — es pura sintaxis y no puede "hacer" nada. Por eso la salida vive en una capa separada, como en un compilador:
+
+1. **Capa sintáctica**: el AFD compilado valida la cadena (dirección + combo + `⊢`) y entrega el par *(dirección, terminal semántico)* que la derivación dejó en el estado de aceptación.
+2. **Capa semántica**: la **tabla de símbolos** (lista serializada `acciones` en el Inspector) traduce ese terminal a su acción en el mundo: `fuego` → instanciar `Fireball` con daño 1, etc.
+
+Un detalle académico fino: si la gramática acepta una cadena cuyo terminal **no está en la tabla**, la cadena es sintácticamente válida pero no produce nada — un **error semántico**, exactamente como un programa que compila pero llama a una función no definida. `Ejecutar()` registra ese caso con una advertencia en Console.
 
 #### Compilación: gramática → AFD
 
@@ -435,47 +471,55 @@ stateDiagram-v2
     direction LR
 
     state "q0 (inicial)" as q0
-    state "q1" as q1
-    state "q2" as q2
-    state "q3" as q3
-    state "q4 (acepta: Hielo)" as q4
-    state "q5 (acepta: Fuego)" as q5
-    state "q6 (acepta: Magia)" as q6
+    state "q1 (copia ↑: tras la dirección)" as q1
+    state "q2 (tras B)" as q2
+    state "q3 (tras B B)" as qF
+    state "q4 (tras B N)" as q3
+    state "q5 (tras G)" as q7
+    state "q6 (acepta → fuego ↑)" as q5
+    state "q7 (acepta → hielo ↑)" as q6
+    state "q8 (acepta → magia ↑)" as q8
 
     [*] --> q0
 
-    q0 --> q1 : B
+    q0 --> q1 : dirección ↑ (↓, ← y → tienen copias idénticas)
+
     q1 --> q2 : B
-    q2 --> q5 : N
-    q1 --> q3 : N
-    q3 --> q4 : M
-    q1 --> q6 : G
+    q2 --> q3 : B
+    q1 --> q4 : N
+    q1 --> q5 : G
+
+    q3 --> q6 : N ⊢
+    q4 --> q7 : M ⊢
+    q5 --> q8 : ⊢
 ```
 
-Los tres estados de aceptación (`q5`, `q4`, `q6`) son **estados de aceptación con salida**: al entrar en ellos se lanza el proyectil asociado y el autómata vuelve al estado inicial (la cadena se consumió completa). Como la salida se produce en la transición de aceptación y no en el estado mismo, es un comportamiento tipo **Mealy**.
+Los tres estados de aceptación de cada copia direccional (`q6`, `q7`, `q8` en la copia ↑) se alcanzan **solo con el símbolo delimitador `⊢`** y almacenan el par *(terminal semántico, dirección)* de su derivación. Al entrar en uno de ellos, la cadena aceptada — que ya trae su dirección y su comando — pasa a la capa semántica y el autómata vuelve al estado inicial. Nótese que la salida **no vive en el autómata**: viaja dentro de la cadena como terminal semántico, y la tabla de símbolos la traduce a la acción — la separación sintaxis/semántica de un compilador.
 
 #### Funcionamiento del reconocedor (Update)
 
 | Entrada | Comportamiento |
 |---------|----------------|
+| Símbolo de dirección al **inicio** de la cadena | Fija la dirección del lanzamiento y entra a la copia del trie correspondiente |
+| Símbolo de combo sin dirección previa | **Rechazado**: toda cadena debe comenzar con un símbolo de dirección |
 | Símbolo con transición válida | Avanza al estado siguiente |
 | Símbolo no esperado | Cadena **rechazada**: vuelve al estado inicial y reintenta ese mismo símbolo desde ahí |
-| Estado de aceptación | Lanza el proyectil (salida) y reinicia al estado inicial |
-| 0.4 s sin teclas | Guarda temporal: la cadena a medias se cancela (vuelta al estado inicial) |
+| `⊢` (Espacio) en un estado con transición de cierre | Aceptación: pasa la cadena (con su dirección y comando) a la capa semántica y reinicia al estado inicial |
+| `⊢` (Espacio) a media cadena | La cadena incompleta es **rechazada** (no hay transición de cierre): vuelve al estado inicial |
 
-Fíjate que los tres combos **comparten el prefijo `B`**: en el autómata, la segunda tecla decide la rama (`B` → fuego, `N` → hielo, `G` → magia). El trie maneja prefijos compartidos sin ambigüedad.
+Fíjate que los tres combos **comparten el prefijo `B`** *dentro de cada copia direccional*: en el autómata, la segunda letra decide la rama (`B` → fuego, `N` → hielo, `G` → magia). El trie maneja prefijos compartidos sin ambigüedad.
 
-#### Restricción de diseño: ninguna producción prefijo de otra
+#### El delimitador y la regla de prefijos
 
-El autómata acepta y reinicia **en cuanto** llega a un estado de aceptación, así que si una producción fuera prefijo de otra (p. ej. `Magia = B N` con `Hielo = B N M`), la corta "se tragaría" a la larga: al teclear `B N` se lanzaría Magia y se reiniciaría el autómata, dejando la `M` de Hielo sin contexto — Hielo se volvería inalcanzable. La gramática seguiría siendo regular, pero el lenguaje efectivo perdería la cadena larga.
+La aceptación está **diferida al símbolo delimitador**: un estado intermedio nunca dispara salida por sí mismo, solo habilita (o no) la transición de cierre con `⊢`. Esto elimina el problema clásico de prefijos: si una producción fuera prefijo de otra (p. ej. `Magia = B N ⊢` con `Hielo = B N M ⊢`), el estado tras `B N` tendría a la vez la transición de cierre de Magia y la transición `M` de Hielo, y ambas cadenas serían aceptables — `B N ⊢` lanza Magia y `B N M ⊢` lanza Hielo, sin que la corta "se trague" a la larga.
 
-Regla práctica: dos combos pueden compartir el inicio, pero cuando se bifurcan, se bifurcan para siempre. (La alternativa académica — diferir la aceptación con un buffer, como el *maximal munch* de los lexer — se descartó por introducir retraso perceptible en la salida.)
+(Es el equivalente al *diferimiento* de aceptación que usan los lexer de los compiladores — el *maximal munch* — pero logrado con un símbolo explícito del alfabeto en vez de un buffer temporizado, lo que mantiene el modelo 100% atemporal.)
 
 #### El proyectil: la salida del autómata en el mundo
 
-`Projectile.cs` materializa la aceptación de la gramática:
+`Projectile.cs` materializa la acción que la tabla de símbolos asignó a la cadena aceptada:
 
-1. `Lanzar(dirección, daño)`: recibe la dirección de mira del jugador y fija la velocidad; el sprite (que apunta a la derecha) **rota** hacia la dirección de vuelo con `Atan2`.
+1. `Lanzar(dirección, daño)`: recibe la dirección determinada por el **primer símbolo de la cadena** y fija la velocidad; el sprite (que apunta a la derecha) **rota** hacia la dirección de vuelo con `Atan2`.
 2. Ignora al `Player` y a los **triggers "fantasma"** (espada, pickups, zonas de colina): solo colisiones no-trigger (muros) lo destruyen.
 3. Si toca un `EnemyHealth`, le aplica el daño del combo y muere; además tiene guarda temporal propia (`vidaMaxima` = 2 s).
 
@@ -483,13 +527,15 @@ Regla práctica: dos combos pueden compartir el inicio, pero cuando se bifurcan,
 
 | Concepto formal | Implementación |
 |-----------------|----------------|
-| Alfabeto | `LeerSimbolo()` en `ComboController.cs` (flechas + WASD + letras A-Z) |
-| Producciones | Lista serializada `combos` en el Inspector (nombre, secuencia, proyectil, daño) |
-| Compilación gramática → AFD | `CompilarGramatica()` en `Awake()` (trie determinista) |
+| Alfabeto | `LeerSimbolo()` en `ComboController.cs` (símbolos de dirección + letras A-Z + delimitador `⊢`) |
+| Símbolos de dirección | Arreglos `SIMBOLOS_DIRECCION` / `VECTORES_DIRECCION` (flechas o WASD, normalizados a `↑ ↓ ← →`) |
+| Símbolo delimitador `⊢` | Constante `DELIMITADOR` (`KeyCode.Space`); el compilador lo agrega al final de cada producción |
+| Producciones (sintaxis) | Lista serializada `combos` en el Inspector (nombre, camino de letras, terminal semántico) |
+| Compilación gramática → AFD | `CompilarGramatica()` en `Awake()`: trie determinista en **4 copias, una por dirección** |
 | Función de transición δ | `transiciones` (Dictionary) de cada nodo |
-| Estados de aceptación | Campo `acepta` de cada nodo (la regla completa) |
-| Salida (Mealy) | `LanzarProyectil()` en la transición de aceptación |
-| Guarda temporal | `timeout` = 0.4 s en `Update()` |
+| Estados de aceptación | Campos `simboloSalida` + `direccion` de cada nodo, alcanzados solo con `⊢` |
+| Tabla de símbolos (semántica) | Lista serializada `acciones` + índice `Dictionary` construido en `Awake()` |
+| Traducción a acción | `Ejecutar(terminal, dirección)`: consulta la tabla; terminal ausente = error semántico (cadena válida, sin efecto) |
 
 ---
 
@@ -512,7 +558,7 @@ Los autómatas de las secciones anteriores no viven aislados: se comunican. Este
 
 **El jugador lanza un proyectil (gramática de combos, sección 6):**
 
-1. El jugador teclea una cadena válida (p. ej. `B B N`) → la gramática compilada en `ComboController.cs` llega a un estado de aceptación y lanza el proyectil del combo.
+1. El jugador teclea una cadena válida con su dirección y la cierra con el delimitador (p. ej. `W B B N` + `Espacio`) → la gramática compilada en `ComboController.cs` alcanza un estado de aceptación y pasa la cadena (dirección + comando) a la tabla de símbolos, que lanza el proyectil del combo.
 2. `Projectile.cs` toma la dirección de mira (`Xinput`/`Yinput`), rota el sprite hacia esa dirección y vuela en línea recta.
 3. Si toca al enemigo → `EnemyHealth.TakeDamage()` (FSM del enemigo, sección 2) + knockback; si toca un muro sólido, muere; los triggers "fantasma" no lo detienen.
 
@@ -549,7 +595,7 @@ Si algo se asigna a mano, el código lo respeta (compatibilidad con la escena ac
 | Árboles con colisión | libre | 4 | **Individual** |
 | Árboles decorativos | libre | 4 | **Individual** |
 
-3. Arrastrar los prefabs a la escena: `Player`, `HealthCanvas` y `Enemy` (cada uno ya trae sus componentes, tags y referencias internas).
+3. Arrastrar los prefabs a la escena: `Player`, `HealthCanvas` y `Enemy` (cada uno ya trae sus componentes, tags y referencias internas). Para más enemigos, duplicar el prefab `Enemy` y configurar su patrulla: `PointA`/`PointB` (ping-pong) o el componente `EnemyPatrol3Puntos` para rutas de 3 puntos en L.
 4. Colocar pickups `HeartPickup` (cambiar `Type` por instancia si se quiere otro color) y los triggers `Entry`/`Exit` de la colina.
 5. Verificar en el Inspector: `Entry` y `Exit` con las listas de colliders **vacías** (se auto-cablean al Play).
 
@@ -584,7 +630,7 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 | Sistema de vida | **Autómata de pila (PDA)**: alfabeto de entrada (daño, recoger), alfabeto de pila (colores de corazón), PUSH/POP, estado de rechazo = Game Over. La UI es una función de la pila. | `PlayerHealth.cs`, `HeartPickup.cs`, `HealthUI.cs` |
 | Guardas temporales | **Autómatas temporizados**: transiciones condicionadas por tiempo acumulado; convierten eventos continuos por frame en símbolos discretos. | Cooldowns en `PlayerAttack.cs`, `PlayerSword.cs`, `EnemyContactDamage.cs`, `PlayerHealth.cs` |
 | Ciclo de ataque con Animation Event | Distinción entre **entrada de la FSM** (`isAttacking`) y **acciones de salida** (`ResetAttack()` como evento generado por la animación), y el papel de las **guardas temporales** (cooldown, exit time). | `PlayerAttack.cs` + clips de ataque |
-| Combos de teclas | **Gramática regular (tipo 3 de Chomsky) compilada a AFD**: las producciones se serializan como datos en el Inspector y se compilan a un trie determinista en `Awake()` (teorema de Kleene: gramática regular ↔ autómata finito). Los estados de aceptación producen salida al transitar (comportamiento **Mealy**: lanzar el proyectil). Alfabeto extendido (flechas, WASD, letras A-Z) y guarda temporal de 0.4 s. | `ComboController.cs`, `Projectile.cs` |
+| Combos de teclas | **Gramática de traducción (tipo 3 de Chomsky) compilada a AFD**: las producciones se serializan como datos en el Inspector y se compilan a un trie determinista en `Awake()` (teorema de Kleene: gramática regular ↔ autómata finito). Toda cadena es `dirección · combo · ⊢`: el **primer símbolo fija la dirección del proyectil** (viaja dentro de la cadena, sin estado externo), el **delimitador `⊢` (Espacio)** la cierra — reconocimiento de libro, sin lógica temporal y aceptación diferida sin ambigüedad de prefijos — y la copia del trie por dirección recuerda la dirección elegida. Cada derivación termina en un **terminal semántico** (`fuego`, `hielo`, `magia`) y una **tabla de símbolos** (capa semántica separada de la sintaxis) lo traduce a la acción en el mundo: el efecto es función exclusiva de la cadena aceptada. | `ComboController.cs`, `Projectile.cs` |
 | Autómatas de mapas (planeado) | AFD para navegación entre zonas y **autómata de pila (PDA)** para la jerarquía de mapas (apilar/desapilar el contexto de ubicación). | Pendiente |
 
 ---
@@ -603,7 +649,9 @@ Proyecto_lenguajes/
 │   │   ├── PlayerHealth.cs          # PDA de la vida: Stack<Heart>, PUSH/POP, flash, knockback, i-frames
 │   │   ├── HealthUI.cs              # Dibuja la pila de corazones (tinte + oscurecido por daño)
 │   │   ├── HeartPickup.cs           # Trigger de recogida: PUSH a la pila (si no está llena)
-│   │   ├── EnemyPatrol.cs           # Patrulla A/B; escribe Speed; TurnAround(); ApplyKnockback()
+│   │   ├── EnemyPatrol.cs           # Patrulla A/B (ping-pong); escribe Speed; TurnAround(); ApplyKnockback()
+│   │   ├── EnemyPatrol3Puntos.cs    # Patrulla de 3 puntos con ida y vuelta (rutas en L)
+│   │   ├── IEnemigoMovil.cs         # Interfaz común de las patrullas (TurnAround + ApplyKnockback)
 │   │   ├── EnemyHealth.cs           # Vida del enemigo; isHurt 0.3 s (coroutina)
 │   │   ├── EnemyContactDamage.cs    # Daño por contacto; cooldown 1 s; TurnAround() al iniciar contacto
 │   │   ├── HillEntry.cs             # Transición a "Dentro de la colina"
@@ -623,7 +671,7 @@ Proyecto_lenguajes/
 |--------|-------------------|-------|
 | `Player` | `PlayerMovement`, `PlayerAttack`, `PlayerHealth`, `ComboController` | Tag obligatorio: `Player` (lo usan HillEntry/HillExit y HeartPickup). `Initial Hearts` se apila en orden: el último de la lista queda en la cima. `Combos` serializa las producciones de la gramática (sección 6) |
 | `SwordTrigger` (hijo de Player) | Collider 2D (trigger) + `PlayerSword` | Se posiciona delante del jugador según `Xinput`/`Yinput` |
-| `Enemy` | `EnemyPatrol`, `EnemyHealth`, `EnemyContactDamage` | Tag: `Enemy`. Requiere `pointA`/`pointB` asignados |
+| `Enemy` | `EnemyPatrol`, `EnemyHealth`, `EnemyContactDamage` | Tag: `Enemy`. Ruta con `PointA`/`PointB` (si faltan, se auto-crean alrededor del punto inicial) |
 | `HealthCanvas` > `Hearts` | `HealthUI` + Horizontal Layout Group | El primer icono (izquierda) es la cima de la pila; iconos de 80×80 |
 | `HeartPickup` | Sprite + Circle Collider 2D (Is Trigger) + `HeartPickup` | Campo `Type` define el color que hace PUSH; el script tinta el sprite según el tipo |
 | Tilemaps `TreeCollition` / `TreeNotCollition` | Tilemap Collider 2D + Tilemap Renderer (Modo Individual, Order 4) | Mismo orden que el jugador: la profundidad la decide el sort por eje Y |
