@@ -1,5 +1,7 @@
 # Proyecto_lenguajes
 
+**Autor:** Daniel Pinilla — curso *Lenguajes de Programación*, Unillanos (Universidad de los Llanos).
+
 Videojuego **2D top-down tipo dungeon/Zelda**, con estética **pixel art**, desarrollado en **Unity 6** como proyecto del curso de **Lenguajes de Programación** de la **Unillanos** (Universidad de los Llanos).
 
 El objetivo académico del proyecto es aplicar teoría de **lenguajes formales y autómatas**: el comportamiento del jugador, del enemigo, del mapa y del sistema de vida se modela mediante autómatas (AFD y PDA) que se documentan en este README, indicando en cada caso el archivo de código donde vive el concepto.
@@ -410,6 +412,36 @@ Los **pickups del mapa** también visten el color de su tipo: `HeartPickup.cs` t
 | Estado de rechazo | `hearts.Count == 0` → "Game Over" |
 | Estado invulnerable con temporizador | `invulnerabilityTimer` (0.5 s de parpadeo) |
 | Poder expresivo | Pila ilimitada → infinitas configuraciones → lenguaje no regular (prefijos balanceados `#recoger ≥ #daño`); un contador acotado solo alcanzaría un lenguaje regular |
+| Estado de rechazo | `daño` cuando `hearts.Count == 0` (δ(q, daño, ε) no existe) → "Game Over"; el POP que deja la pila vacía **no** mata |
+
+#### El PDA como parser: rechazo temprano y prefijos viables
+
+Un analizador sintáctico (parser) de un compilador no es "parecido" a un autómata de pila: **es** un autómata de pila. La misma máquina que aquí decide si el jugador sobrevive es, con otro vocabulario, la que decide si un programa compila. Y comparte con los parsers de producción su propiedad más fina:
+
+> **Propiedad del prefijo viable (viable prefix property):** un parser reporta el error en el **primer símbolo donde el prefijo leído ya no es prefijo de ninguna cadena del lenguaje** — nunca espera al final de la entrada. Es la propiedad que garantiza que los parsers LR detecten cada error de sintaxis en el primer token posible.
+
+**El rechazo del PDA de vida es temprano, y es óptimo.** La demostración cabe en dos pasos:
+
+1. **Toda configuración viva es completable.** Sea cual sea el contenido de la pila — o pila vacía sin daño pendiente —, si el siguiente símbolo es `recoger`, el jugador sigue vivo. Ninguna configuración alcanzada puede descartarse de antemano.
+2. Por lo tanto, el primer símbolo que mata — `daño` con la pila vacía, la transición `δ(q, daño, ε)` que no existe — es **exactamente el primer símbolo donde el prefijo deja de ser viable**. Detectar el error antes obligaría a rechazar entradas que todavía podían salvarse: falso rechazo.
+
+Es la misma exactitud con la que un compilador señala la línea y la columna de un error de sintaxis: el reporte del rechazo ocurre en el símbolo exacto de la violación, no al final de la cadena — un monitor que solo revisara la vida "cada cierto tiempo" aceptaría cadenas que el lenguaje excluye.
+
+| Analizador sintáctico (compiladores) | PDA de vida (juego) |
+|--------------------------------------|---------------------|
+| Tokens del lenguaje fuente | `daño`, `recoger(color)` |
+| El parser (autómata de pila) | `PlayerHealth.cs` |
+| La pila del parser | `Stack<Heart>` |
+| Prefijo viable | Configuración de la que el jugador aún puede no morir |
+| Error de sintaxis, reportado en el primer token no viable | Game Over en el `daño` con pila vacía |
+| Mensaje del compilador con línea y columna exactas | El log de la Consola en el golpe exacto |
+
+**Dos políticas de error, cada una correcta para su lenguaje.** El proyecto usa las dos caras del tratamiento de errores de un compilador:
+
+- El **AFD de los combos** (sección 6) hace **recuperación de errores**: un símbolo no esperado devuelve el autómata al estado inicial y el símbolo se reintenta desde ahí. Su lenguaje es interactivo — el jugador se equivoca y vuelve a teclear la cadena — y el error es recuperable por diseño.
+- El **PDA de la vida** hace **rechazo fatal**. Su lenguaje es una **propiedad de seguridad** ("el jugador no muere nunca"), y una propiedad de seguridad no se recupera: solo se cumple o se viola. Aquí el autómata actúa como **monitor** de la propiedad: acepta mientras el invariante `#recoger ≥ #daño` se cumple en todo prefijo y rechaza en la primera violación — no hay "modo de recuperación" posible, porque después de la violación el lenguaje ya quedó excluido.
+
+**Por qué la pila es la estructura de los parsers.** La pila no solo recuerda el pasado: **resume exactamente la parte del pasado que condiciona los futuros posibles**. Mirando la UI (los iconos de la cima + el contador) se sabe al instante, en O(1) por símbolo, cuántos `daño` consecutivos matarían al jugador: el contenido de la pila es suficiente para decidir la viabilidad de cada prefijo sin re-examinar la historia. Esa es la razón de ser de la pila en los parsers — y la razón de que un contador aplanado, que pierde la secuencia de desgastes individuales, ya no pueda distinguir configuraciones que condicionan distinto el futuro.
 
 ---
 
@@ -655,7 +687,7 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 | FSM del Animator del enemigo | **AFD receptivo**: sus entradas no son del jugador sino del resto del sistema (`Speed`, `isHurt`), con un estado temporizado (`EnemyHit`). | `Assets/Animations/Enemy.controller`, `EnemyPatrol.cs`, `EnemyHealth.cs` |
 | FSM de zonas (colinas) | **AFD dirigido por eventos** (reconocimiento de eventos físicos del tilemap), con acciones asociadas a cada transición. | `HillEntry.cs`, `HillExit.cs` |
 | Sort de profundidad por eje Y | **Generalización continua de la profundidad**: cuando el orden discreto (`sortingOrder` fijo) era insuficiente, la posición Y continua decide el orden de dibujo (Transparency Sort Mode Custom Axis + tilemaps en modo Individual). | `ProjectSettings/GraphicsSettings.asset`, Tilemap Renderers de árboles |
-| Sistema de vida | **Autómata de pila (PDA)**: alfabeto de entrada (daño, recoger), alfabeto de pila (colores de corazón), PUSH/POP, estado de rechazo = Game Over. La **pila es ilimitada** (sin tope de corazones), así que las configuraciones son infinitas y el sistema no se aplana a AFD: con corazones de 1 golpe, sobrevivir equivale a los prefijos balanceados `#recoger ≥ #daño` — un lenguaje no regular, como demuestra el lema del bombeo. La UI es una función de la pila (iconos de la cima + contador `+N` cuando la pila supera el espacio visible). | `PlayerHealth.cs`, `HeartPickup.cs`, `HealthUI.cs` |
+| Sistema de vida | **Autómata de pila (PDA)**: alfabeto de entrada (daño, recoger), alfabeto de pila (colores de corazón), PUSH/POP, estado de rechazo = Game Over. La **pila es ilimitada** (sin tope de corazones), así que las configuraciones son infinitas y el sistema no se aplana a AFD: con corazones de 1 golpe, sobrevivir equivale a los prefijos balanceados `#recoger ≥ #daño` — un lenguaje no regular, como demuestra el lema del bombeo. El rechazo implementa la **propiedad del prefijo viable** de los parsers: el error se detecta en el primer símbolo donde el prefijo deja de ser viable (daño con pila vacía), nunca después. La UI es una función de la pila (iconos de la cima + contador `+N` cuando la pila supera el espacio visible). | `PlayerHealth.cs`, `HeartPickup.cs`, `HealthUI.cs` |
 | Guardas temporales | **Autómatas temporizados**: transiciones condicionadas por tiempo acumulado; convierten eventos continuos por frame en símbolos discretos. | Cooldowns en `PlayerAttack.cs`, `PlayerSword.cs`, `EnemyContactDamage.cs`, `PlayerHealth.cs` |
 | Ciclo de ataque con Animation Event | Distinción entre **entrada de la FSM** (`isAttacking`) y **acciones de salida** (`ResetAttack()` como evento generado por la animación), y el papel de las **guardas temporales** (cooldown, exit time). | `PlayerAttack.cs` + clips de ataque |
 | Combos de teclas | **Gramática de traducción (tipo 3 de Chomsky) compilada a AFD**: las producciones se serializan como datos en el Inspector y se compilan a un trie determinista en `Awake()` (teorema de Kleene: gramática regular ↔ autómata finito). Toda cadena es `dirección · combo · ⊢`: el **primer símbolo fija la dirección del proyectil** (viaja dentro de la cadena, sin estado externo), el **delimitador `⊢` (Espacio)** la cierra — reconocimiento de libro, sin lógica temporal y aceptación diferida sin ambigüedad de prefijos — y la copia del trie por dirección recuerda la dirección elegida. Cada derivación termina en un **terminal semántico** (`fuego`, `hielo`, `magia`) y una **tabla de símbolos** (capa semántica separada de la sintaxis) lo traduce a la acción en el mundo: el efecto es función exclusiva de la cadena aceptada. | `ComboController.cs`, `Projectile.cs` |
@@ -697,7 +729,7 @@ Proyecto_lenguajes/
 
 | Objeto | Componentes clave | Notas |
 |--------|-------------------|-------|
-| `Player` | `PlayerMovement`, `PlayerAttack`, `PlayerHealth`, `ComboController` | Tag obligatorio: `Player` (lo usan HillEntry/HillExit y HeartPickup). `Initial Hearts` se apila en orden: el último de la lista queda en la cima. `Combos` serializa las producciones de la gramática (sección 6) |
+| `Player` | `PlayerMovement`, `PlayerAttack`, `PlayerHealth`, `ComboController` | Tag obligatorio: `Player` (lo usan HillEntry/HillExit y HeartPickup). `Z0` (PlayerHealth) define el símbolo inicial de pila: la pila arranca con un solo corazón, la configuración inicial `(q0, Z0)` (sección 4). `Combos` serializa las producciones de la gramática (sección 6) |
 | `SwordTrigger` (hijo de Player) | Collider 2D (trigger) + `PlayerSword` | Se posiciona delante del jugador según `Xinput`/`Yinput` |
 | `Enemy` | `EnemyPatrol`, `EnemyHealth`, `EnemyContactDamage` | Tag: `Enemy`. Ruta con `PointA`/`PointB` (si faltan, se auto-crean alrededor del punto inicial) |
 | `HealthCanvas` > `Hearts` | `HealthUI` + Horizontal Layout Group | El primer icono (izquierda) es la cima de la pila; iconos de 80×80 |
