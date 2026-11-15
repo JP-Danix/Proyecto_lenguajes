@@ -22,16 +22,17 @@ public class Heart
 }
 
 // Sistema de vida modelado como autómata de pila (PDA):
-// - PUSH: recoger un corazón (queda en la cima)
+// - PUSH: recoger un corazón (queda en la cima); la pila es ILIMITADA (sin tope de profundidad),
+//   así que el número de configuraciones es infinito y el sistema NO se puede aplanar a un AFD:
+//   con corazones de 1 golpe, sobrevivir exige #recoger >= #daño en todo prefijo de la cadena
+//   de eventos (prefijos balanceados), un lenguaje que el lema del bombeo demuestra no regular.
 // - POP: el corazón de la cima se agota por el daño
-// - Rechazo: pila vacía = Game Over
+// - Configuración inicial: (q0, Z0) — la pila arranca con el único símbolo Z0 (corazón rojo)
+// - Rechazo: daño con pila vacía = no existe la transición δ(q, daño, ε) = Game Over
 public class PlayerHealth : MonoBehaviour
 {
-    public int maxHearts = 3;
-    public List<HeartColor> initialHearts = new List<HeartColor>
-    {
-        HeartColor.Amarillo, HeartColor.Azul, HeartColor.Rojo
-    };
+    [Header("Configuración inicial del PDA")]
+    public HeartColor Z0 = HeartColor.Rojo; // símbolo inicial de pila: la configuración inicial es (q0, Z0)
     public HealthUI healthUI;
 
     [Header("Efectos al recibir daño")]
@@ -65,11 +66,10 @@ public class PlayerHealth : MonoBehaviour
             healthUI = FindFirstObjectByType<HealthUI>();
         }
 
-        // Apila los corazones iniciales: el último de la lista queda en la cima
-        foreach (HeartColor type in initialHearts)
-        {
-            hearts.Push(new Heart(type));
-        }
+        // Configuración inicial (q0, Z0): la pila arranca con el símbolo inicial Z0,
+        // exactamente un elemento, como exige la definición del PDA. La serialización
+        // es un solo HeartColor (no una lista): no se puede expresar una pila pre-cargada.
+        hearts.Push(new Heart(Z0));
         NotifyUI();
     }
 
@@ -100,8 +100,19 @@ public class PlayerHealth : MonoBehaviour
     {
         if (invulnerabilityTimer > 0f) return; // invulnerable: ignora el golpe
 
-        for (int i = 0; i < damage && hearts.Count > 0; i++)
+        // Cada unidad de daño es un símbolo de entrada. El rechazo NO es "quedarse
+        // sin pila" (el POP que vacía la pila deja vivo al jugador, y un recoger lo
+        // recupera: δ(q, recoger, ε) existe): es recibir daño cuando la pila YA está
+        // vacía — δ(q, daño, ε) no existe, así que esa lectura muere en el acto.
+        for (int i = 0; i < damage; i++)
         {
+            if (hearts.Count == 0)
+            {
+                Debug.Log("Game Over");
+                Destroy(gameObject); // luego: respawn o pantalla de muerte
+                return;
+            }
+
             Heart top = hearts.Peek();
             top.hitsLeft--;
             Debug.Log("Golpe al corazón " + top.type + " (le quedan " + top.hitsLeft + " golpes)");
@@ -109,15 +120,8 @@ public class PlayerHealth : MonoBehaviour
             if (top.hitsLeft <= 0)
             {
                 hearts.Pop(); // POP: el corazón de la cima se rompe
-                Debug.Log("Se rompió un corazón " + top.type);
+                Debug.Log("Se rompió un corazón " + top.type + (hearts.Count == 0 ? " (pila vacía: vivo, pero el próximo daño es rechazo)" : ""));
             }
-        }
-
-        if (hearts.Count == 0)
-        {
-            Debug.Log("Game Over");
-            Destroy(gameObject); // luego: respawn o pantalla de muerte
-            return;
         }
 
         invulnerabilityTimer = invulnerabilityTime;
@@ -132,15 +136,12 @@ public class PlayerHealth : MonoBehaviour
         NotifyUI();
     }
 
-    // PUSH: devuelve true si se pudo apilar (falso si la pila está llena)
-    public bool PushHeart(HeartColor type)
+    // PUSH: la pila es ilimitada, así que siempre se puede apilar
+    public void PushHeart(HeartColor type)
     {
-        if (hearts.Count >= maxHearts) return false;
-
         hearts.Push(new Heart(type));
-        Debug.Log("PUSH: corazón " + type + " (vida total: " + TotalHits() + " golpes)");
+        Debug.Log("PUSH: corazón " + type + " (profundidad de la pila: " + hearts.Count + ", vida total: " + TotalHits() + " golpes)");
         NotifyUI();
-        return true;
     }
 
     private int TotalHits()

@@ -25,10 +25,10 @@ public class HeartPickup : MonoBehaviour
         if (!collision.CompareTag("Player")) return;
 
         PlayerHealth player = collision.GetComponent<PlayerHealth>();
-        if (player != null && player.PushHeart(type))
+        if (player != null)
         {
-            Destroy(gameObject); // recogido: PUSH hecho
+            player.PushHeart(type);
+            Destroy(gameObject); // recogido: PUSH hecho (la pila es ilimitada, siempre acepta)
         }
-        // Si la pila está llena, el corazón NO se consume (sigue en el mapa)
     }
 }

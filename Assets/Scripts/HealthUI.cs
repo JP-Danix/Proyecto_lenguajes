@@ -4,26 +4,41 @@ using UnityEngine.UI;
 
 // Dibuja en pantalla el contenido de la pila de corazones.
 // El primer icono (izquierda) es la CIMA de la pila: el corazón que recibe el daño.
+//
+// Como la pila es ilimitada (un PDA de verdad), puede tener cualquier profundidad:
+// se muestran los iconos de la CIMA (hasta Max Visible Icons) y, si hay más corazones
+// por debajo, un contador los resume. La pantalla sigue siendo función pura de la pila.
 public class HealthUI : MonoBehaviour
 {
     public RectTransform heartsContainer; // panel con Horizontal Layout Group
+    public GameObject heartIconPrefab;
+    public int maxVisibleIcons = 5;       // cuántos iconos de la cima se dibujan como máximo
+    public Text counterText;              // opcional: muestra "+N" con los corazones no visibles
 
     public void Refresh(Stack<Heart> hearts)
     {
-        // Redibuja todos los iconos
+        // Redibuja los iconos de la cima
         foreach (Transform child in heartsContainer)
         {
             Destroy(child.gameObject);
         }
 
+        int mostrados = 0;
         foreach (Heart heart in hearts) // Stack se itera de la cima hacia abajo
         {
+            if (mostrados >= maxVisibleIcons) break;
             GameObject icon = Instantiate(heartIconPrefab, heartsContainer);
             icon.GetComponent<Image>().color = GetColor(heart);
+            mostrados++;
+        }
+
+        // El resto de la pila (debajo de los visibles) se resume en el contador
+        if (counterText != null)
+        {
+            int ocultos = hearts.Count - mostrados;
+            counterText.text = ocultos > 0 ? "+" + ocultos : "";
         }
     }
-
-    public GameObject heartIconPrefab;
 
     private Color GetColor(Heart heart)
     {

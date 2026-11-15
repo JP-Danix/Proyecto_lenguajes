@@ -16,7 +16,7 @@ Funcionalidades implementadas:
 - Animaciones direccionales: caminar e idle en 4 direcciones, ataque en 4 direcciones.
 - Sistema de ataque por clic izquierdo con cooldown, congelamiento de movimiento durante el ataque y golpe con la espada.
 - Enemigos con dos tipos de patrulla: **ida y vuelta A/B** (`EnemyPatrol.cs`) y **ruta de 3 puntos de ida y vuelta** (`EnemyPatrol3Puntos.cs`, P1→P2→P3→P2→P1, ideal para rutas en L). Ambas implementan la interfaz `IEnemigoMovil`, el contrato que usan el knockback de la espada y la media vuelta por contacto. Animaciones (idle, correr, daño), daño por contacto con cooldown y knockback al recibir daño.
-- Sistema de vida como autómata de pila (PDA): corazones Amarillo (3 golpes), Azul (2) y Rojo (1), con UI en pantalla y pickups en el mapa (teñidos según su tipo).
+- Sistema de vida como autómata de pila (PDA): pila ilimitada de corazones Amarillo (3 golpes), Azul (2) y Rojo (1), arrancando en la configuración `(q0, Z0)` (un corazón rojo como símbolo inicial de pila), con UI en pantalla y pickups en el mapa (teñidos según su tipo).
 - Efectos de combate: flash rojo y retroceso al recibir daño (jugador), retroceso del enemigo al ser golpeado.
 - Zonas de colina con colisiones y orden de renderizado dinámicos.
 - Profundidad top-down por sort del eje Y: árboles y rocas cubren al jugador cuando está detrás de ellos.
@@ -293,14 +293,38 @@ Este es el autómata más ambicioso del proyecto hasta ahora: la **vida del juga
 
 **Fuente:** `Assets/Scripts/PlayerHealth.cs` (el autómata), `Assets/Scripts/HeartPickup.cs` (entrada PUSH desde el mundo) y `Assets/Scripts/HealthUI.cs` (visualización de la pila).
 
-**Tipo:** autómata de pila (PDA) determinista en la práctica: en cada momento la cima de la pila determina de forma única qué ocurre con el siguiente golpe o pickup.
+**Tipo:** autómata de pila (PDA) determinista en la práctica: en cada momento la cima de la pila determina de forma única qué ocurre con el siguiente golpe o pickup. La pila es **ilimitada** (sin tope de profundidad), así que el número de configuraciones es infinito y el sistema **no se puede aplanar a un AFD**.
+
+#### La definición formal y la configuración inicial
+
+El sistema se ajusta a la séptupla canónica `M = (Q, Σ, Γ, δ, q0, Z0, F)`:
+
+| Componente | En el juego |
+|------------|-------------|
+| `Σ` (alfabeto de entrada) | `{daño, recoger(color)}` |
+| `Γ` (alfabeto de pila) | `{amarillo, azul, rojo}` |
+| `Z0` (símbolo inicial de pila) | Campo serializado `Z0` (`HeartColor`) en `PlayerHealth.cs`, con valor **rojo**. Es un símbolo único, no una lista: el sistema de tipos impide expresar una pila pre-cargada, así que la configuración inicial `(q0, Z0)` es canónica **por construcción** |
+| Configuración inicial | `(q0, Z0)` — la pila arranca con exactamente un símbolo, como exige la definición |
+
+Con esa configuración inicial, el rechazo y la recuperación mapean con toda precisión:
+
+- `δ(q, daño, ε)` **no existe**: un `daño` con la pila vacía no tiene transición definida, y un PDA rechaza exactamente cuando lee una entrada para la que no hay transición → **Game Over**.
+- `δ(q, recoger(color), ε)` **sí existe**: un `recoger` sobre la pila vacía apila el primer corazón. Por eso el jugador puede estar "vivo con pila vacía" (a un golpe del rechazo) y recuperarse recogiendo.
+
+Esa asimetría es la vida del jugador en estado puro: la pila vacía es alcanzable en juego normal, y de ahí se sale solo por la izquierda del alfabeto (`recoger`), nunca por la derecha (`daño`).
+
+#### Por qué la pila es necesaria (y no un adorno)
+
+Con la pila sin tope, el conjunto de secuencias de eventos que el jugador **sobrevive** es un lenguaje **no regular**. La demostración es directa con el caso más simple — solo corazones rojos (1 golpe): con `r` = recoger y `d` = daño, sobrevivir a la cadena `w` equivale a que **en todo prefijo de `w` se cumpla `#r ≥ #d`** (cada daño consume un corazón, y daño con pila vacía es rechazo inmediato). Ese lenguaje de prefijos balanceados es el primo hermano de los paréntesis balanceados, y el **lema del bombeo** demuestra que ningún AFD lo reconoce: la pila es la memoria que el lenguaje exige.
+
+Es la distinción clave frente a un contador de vida: un contador solo recuerda un número (estado finito); la pila recuerda la **secuencia** de corazones con sus desgastes individuales, y el daño siempre impacta lo último recogido (LIFO). El orden de recogida cambia el resultado — un AFD no puede distinguirlo, una pila sí.
 
 #### Alfabeto de entrada
 
 | Símbolo de entrada | Origen en el código | Efecto sobre la pila |
 |--------------------|---------------------|----------------------|
 | `daño` | `PlayerHealth.TakeDamage(damage, hitDirection)`, llamado por `EnemyContactDamage.cs` | Resta 1 golpe al corazón de la **cima**; si sus golpes llegan a 0, la cima sale de la pila (POP) |
-| `recoger(color)` | `PlayerHealth.PushHeart(type)`, llamado por `HeartPickup.cs` al tocar el pickup | Apila un corazón nuevo del color dado (PUSH); si la pila está llena, la entrada se **rechaza** y el pickup permanece en el mapa |
+| `recoger(color)` | `PlayerHealth.PushHeart(type)`, llamado por `HeartPickup.cs` al tocar el pickup | Apila un corazón nuevo del color dado (PUSH); la pila es **ilimitada**, así que la entrada siempre se acepta y el pickup se consume |
 
 #### Los símbolos de la pila (alfabeto de pila)
 
@@ -329,12 +353,13 @@ El PDA tiene tres configuraciones globales:
 
 | Estado de la pila | Entrada | Acción (transición) |
 |-------------------|---------|---------------------|
-| No llena (`Count < maxHearts`) | `recoger(color)` | PUSH: nuevo `Heart(color)` en la cima |
-| Llena (`Count == maxHearts`) | `recoger(color)` | **Rechaza** la entrada: no hay PUSH y el pickup no se consume |
+| Cualquier profundidad — incluida la vacía: `δ(q, recoger, ε)` | `recoger(color)` | PUSH: nuevo `Heart(color)` en la cima (la pila es ilimitada) |
 | Cima con `hitsLeft > 1` | `daño` | `hits--` sobre la cima (la pila no cambia de tamaño) |
 | Cima con `hitsLeft == 1` | `daño` | POP: la cima sale de la pila |
-| Vacía | `daño` | Estado de rechazo → **Game Over** |
+| Vacía | `daño` | Sin transición definida: `δ(q, daño, ε)` no existe → estado de rechazo, **Game Over** |
 | Invulnerable (temporizador > 0) | `daño` | La entrada se ignora (0.5 s) |
+
+Nota fina pero importante: el **POP que deja la pila vacía no es rechazo** — el jugador sobrevive con pila vacía (a un golpe del rechazo) y un `recoger` posterior lo recupera. El rechazo es el `daño` que **llega** con la pila ya vacía: la entrada para la que no existe transición. En la implementación, la verificación `hearts.Count == 0` ocurre **antes** de aplicar cada unidad de daño, no después.
 
 #### Diagrama
 
@@ -350,9 +375,9 @@ stateDiagram-v2
     state "Invulnerable (0.5 s)" as Inv
     state "Game Over (rechazo)" as Dead
 
-    [*] --> Alive : PUSH inicial (hearts de la lista)
+    [*] --> Alive : configuración inicial (q0, Z0)
 
-    Alive --> Alive : recoger(color) y pila no llena → PUSH
+    Alive --> Alive : recoger(color) → PUSH
     Alive --> Alive : daño y cima hitsLeft > 1 → hits--
     Alive --> Alive : daño y cima hitsLeft = 1 → POP
     Alive --> Inv : daño → flash + knockback + i-frames
@@ -367,8 +392,9 @@ stateDiagram-v2
 - El **primer icono (izquierda) es la cima**: el corazón que recibe el daño primero.
 - El icono se **tinta** con el color del tipo (`Image.color` sobre un sprite base gris, `Assets/Sprites/Heart 1.png`), con iconos de 80×80 en pantalla.
 - El icono se **oscurece** proporcionalmente a los golpes perdidos (`Color.Lerp` hacia negro según `hitsLeft`).
+- Como la pila es **ilimitada**, puede crecer más de lo que caben en pantalla: se dibujan hasta `maxVisibleIcons` (5) iconos **de la cima**, y un contador opcional (`counterText`) resume el resto con `+N`.
 
-Es decir, la UI es una función pura de la pila: `pantalla = dibujar(pila)`. No guarda estado propio; se redibuja completa en cada transición (`NotifyUI()`).
+Es decir, la UI es una función pura de la pila: `pantalla = dibujar(pila)` — con la pila resumida cuando excede el espacio visible. No guarda estado propio; se redibuja completa en cada transición (`NotifyUI()`).
 
 Los **pickups del mapa** también visten el color de su tipo: `HeartPickup.cs` tinta su `SpriteRenderer` en `Start()` con la misma paleta de la UI, así el corazón del mundo se ve idéntico al icono que aparecerá al recogerlo. (El tinte es multiplicativo, por eso el sprite base tiene relleno gris claro.)
 
@@ -378,10 +404,12 @@ Los **pickups del mapa** también visten el color de su tipo: `HeartPickup.cs` t
 |-----------------|----------------|
 | Alfabeto de entrada | Métodos `TakeDamage()` y `PushHeart()` (las dos únicas "letras" que el autómata lee) |
 | Alfabeto de pila | Enum `HeartColor` (Amarillo=3, Azul=2, Rojo=1) y clase `Heart` |
-| La pila | `Stack<Heart> hearts` en `PlayerHealth.cs` |
-| Función de transición | El `for` dentro de `TakeDamage()` y las guardas de `PushHeart()` |
+| Símbolo inicial de pila `Z0` | Campo serializado `Z0` (rojo) en `PlayerHealth.cs`: la pila arranca con exactamente un símbolo, `(q0, Z0)` |
+| La pila | `Stack<Heart> hearts` en `PlayerHealth.cs` — **ilimitada**: crece con cada `recoger`, sin tope de profundidad |
+| Función de transición | El `for` dentro de `TakeDamage()` (POP/desgaste) y el `Push` incondicional de `PushHeart()` (no hay guardas: la pila nunca está "llena") |
 | Estado de rechazo | `hearts.Count == 0` → "Game Over" |
 | Estado invulnerable con temporizador | `invulnerabilityTimer` (0.5 s de parpadeo) |
+| Poder expresivo | Pila ilimitada → infinitas configuraciones → lenguaje no regular (prefijos balanceados `#recoger ≥ #daño`); un contador acotado solo alcanzaría un lenguaje regular |
 
 ---
 
@@ -627,7 +655,7 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 | FSM del Animator del enemigo | **AFD receptivo**: sus entradas no son del jugador sino del resto del sistema (`Speed`, `isHurt`), con un estado temporizado (`EnemyHit`). | `Assets/Animations/Enemy.controller`, `EnemyPatrol.cs`, `EnemyHealth.cs` |
 | FSM de zonas (colinas) | **AFD dirigido por eventos** (reconocimiento de eventos físicos del tilemap), con acciones asociadas a cada transición. | `HillEntry.cs`, `HillExit.cs` |
 | Sort de profundidad por eje Y | **Generalización continua de la profundidad**: cuando el orden discreto (`sortingOrder` fijo) era insuficiente, la posición Y continua decide el orden de dibujo (Transparency Sort Mode Custom Axis + tilemaps en modo Individual). | `ProjectSettings/GraphicsSettings.asset`, Tilemap Renderers de árboles |
-| Sistema de vida | **Autómata de pila (PDA)**: alfabeto de entrada (daño, recoger), alfabeto de pila (colores de corazón), PUSH/POP, estado de rechazo = Game Over. La UI es una función de la pila. | `PlayerHealth.cs`, `HeartPickup.cs`, `HealthUI.cs` |
+| Sistema de vida | **Autómata de pila (PDA)**: alfabeto de entrada (daño, recoger), alfabeto de pila (colores de corazón), PUSH/POP, estado de rechazo = Game Over. La **pila es ilimitada** (sin tope de corazones), así que las configuraciones son infinitas y el sistema no se aplana a AFD: con corazones de 1 golpe, sobrevivir equivale a los prefijos balanceados `#recoger ≥ #daño` — un lenguaje no regular, como demuestra el lema del bombeo. La UI es una función de la pila (iconos de la cima + contador `+N` cuando la pila supera el espacio visible). | `PlayerHealth.cs`, `HeartPickup.cs`, `HealthUI.cs` |
 | Guardas temporales | **Autómatas temporizados**: transiciones condicionadas por tiempo acumulado; convierten eventos continuos por frame en símbolos discretos. | Cooldowns en `PlayerAttack.cs`, `PlayerSword.cs`, `EnemyContactDamage.cs`, `PlayerHealth.cs` |
 | Ciclo de ataque con Animation Event | Distinción entre **entrada de la FSM** (`isAttacking`) y **acciones de salida** (`ResetAttack()` como evento generado por la animación), y el papel de las **guardas temporales** (cooldown, exit time). | `PlayerAttack.cs` + clips de ataque |
 | Combos de teclas | **Gramática de traducción (tipo 3 de Chomsky) compilada a AFD**: las producciones se serializan como datos en el Inspector y se compilan a un trie determinista en `Awake()` (teorema de Kleene: gramática regular ↔ autómata finito). Toda cadena es `dirección · combo · ⊢`: el **primer símbolo fija la dirección del proyectil** (viaja dentro de la cadena, sin estado externo), el **delimitador `⊢` (Espacio)** la cierra — reconocimiento de libro, sin lógica temporal y aceptación diferida sin ambigüedad de prefijos — y la copia del trie por dirección recuerda la dirección elegida. Cada derivación termina en un **terminal semántico** (`fuego`, `hielo`, `magia`) y una **tabla de símbolos** (capa semántica separada de la sintaxis) lo traduce a la acción en el mundo: el efecto es función exclusiva de la cadena aceptada. | `ComboController.cs`, `Projectile.cs` |
@@ -648,7 +676,7 @@ Proyecto_lenguajes/
 │   │   ├── PlayerSword.cs           # Hitbox de la espada; hitCooldown 0.5 s; knockback al enemigo
 │   │   ├── PlayerHealth.cs          # PDA de la vida: Stack<Heart>, PUSH/POP, flash, knockback, i-frames
 │   │   ├── HealthUI.cs              # Dibuja la pila de corazones (tinte + oscurecido por daño)
-│   │   ├── HeartPickup.cs           # Trigger de recogida: PUSH a la pila (si no está llena)
+│   │   ├── HeartPickup.cs           # Trigger de recogida: PUSH a la pila (siempre acepta: pila ilimitada)
 │   │   ├── EnemyPatrol.cs           # Patrulla A/B (ping-pong); escribe Speed; TurnAround(); ApplyKnockback()
 │   │   ├── EnemyPatrol3Puntos.cs    # Patrulla de 3 puntos con ida y vuelta (rutas en L)
 │   │   ├── IEnemigoMovil.cs         # Interfaz común de las patrullas (TurnAround + ApplyKnockback)
