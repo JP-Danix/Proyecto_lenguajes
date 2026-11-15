@@ -692,6 +692,7 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 - **Autómata finito para los mapas:** FSM que modele el cambio completo de escena/zona al transitar entre mapas (más allá de las colinas actuales).
 - **Autómata de pila (PDA) para los mapas:** estructura con memoria de contexto para manejar jerarquías de zonas (p. ej., mundo → dungeon → sala), donde regresar implica desapilar el mapa anterior.
 - **Game Over visual:** hoy el rechazo del PDA destruye al jugador con un log en Console; falta pantalla de muerte/respawn.
+- **Pulido de proyectiles:** escala consistente (los PPU de los sprites están desalineados: jugador 100, hongo 24, proyectiles 32 — en unidades de mundo el proyectil mide ~3× el jugador), animación de impacto, estela (trail), diferenciación de elementos vía la tabla de símbolos (fuego rápido, hielo que ralentiza, magia daño 2) y ondulación del proyectil de magia.
 
 ---
 
