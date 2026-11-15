@@ -173,6 +173,7 @@ Los estados `Player Tree` y `PlayerIdle` no son estados con un único clip, sino
 |-----------|------|---------|-------------|
 | `Speed` | float | `EnemyPatrol.cs` | Magnitud de la velocidad actual (0 = quieto, > 0 = patrullando) |
 | `isHurt` | bool | `EnemyHealth.cs` | true durante 0.3 s cuando recibe daño (coroutina `HurtRoutine()`) |
+| `isDead` | bool | `EnemyHealth.cs` | true cuando la vida llega a 0: dispara la transición al estado sumidero |
 
 #### Estados
 
@@ -181,6 +182,7 @@ Los estados `Player Tree` y `PlayerIdle` no son estados con un único clip, sino
 | `EnemyIdle` | `EnemyIdle.anim` | El hongo está quieto (Speed ≈ 0) |
 | `EnemyRun` | `EnemyRun.anim` | El hongo camina entre sus puntos de patrulla |
 | `EnemyHit` | `EnemyHit.anim` | El hongo muestra su animación de daño (isHurt = true) |
+| `EnemyDie` | `EnemyDie.anim` | **Estado sumidero**: animación de muerte; no tiene transiciones de salida |
 
 - **Estado inicial:** `EnemyIdle`.
 
@@ -192,6 +194,7 @@ Los estados `Player Tree` y `PlayerIdle` no son estados con un único clip, sino
 | `EnemyRun` | `Speed ≈ 0` | `EnemyIdle` |
 | `EnemyIdle` o `EnemyRun` | `isHurt == true` | `EnemyHit` |
 | `EnemyHit` | `isHurt == false` (tras `hurtDuration` = 0.3 s) | Estado anterior |
+| `EnemyIdle`, `EnemyRun` o `EnemyHit` | `isDead == true` | `EnemyDie` |
 
 #### Diagrama de estados
 
@@ -202,6 +205,7 @@ stateDiagram-v2
     state "EnemyIdle" as Idle
     state "EnemyRun" as Run
     state "EnemyHit (daño)" as Hit
+    state "EnemyDie (sumidero)" as EnemyDie
 
     [*] --> Idle
 
@@ -212,7 +216,20 @@ stateDiagram-v2
     Run --> Hit : isHurt = true
     Hit --> Idle : isHurt = false (0.3 s)
     Hit --> Run : isHurt = false (0.3 s)
+
+    Idle --> EnemyDie : isDead = true
+    Run --> EnemyDie : isDead = true
+    Hit --> EnemyDie : isDead = true
 ```
+
+#### El estado sumidero `EnemyDie`
+
+`EnemyDie` es un **estado absorbente (sink)**: no tiene transiciones de salida — una vez que la FSM entra, ya no sale. Su papel es el espejo del "Game Over" del PDA del jugador: **la transición a un estado del que no hay retorno**. En `EnemyHealth.cs`:
+
+- La guarda `isDead` la dispara `Die()` cuando la vida llega a 0 (señal externa que el AFD lee como cualquier otra entrada).
+- Las **acciones de entrada** del estado son la limpieza del cuerpo: `Die()` apaga todos los scripts hijos (las dos patrollas posibles, el daño por contacto), desactiva los colliders (el cadáver ni daña ni recibe golpes) y cancela la guarda `isHurt` a medio camino (`StopAllCoroutines()`).
+- La **salida del estado es la animación de muerte** (Moore puro: la animación vive en el estado, no en la transición). La destrucción del GameObject es la capa de aplicación que corre al terminar el clip — `EnemyDieRoutine()` espera la duración **leyéndola del propio Animator** (`AnimatorStateInfo.length`), sin números mágicos.
+- Las transiciones de locomoción (`Idle ↔ Run`) solo se ganan entre sí por la guarda de `Speed`: con `isDead == true` pendiente, desde Idle y Run la única transición posible es la del sumidero, y desde `EnemyHit` la FSM converge a `EnemyDie` a lo sumo en un frame. En código, además, `TakeDamage()` hace *early return* si `dead` — el cuerpo muerto ni siquiera procesa más golpes.
 
 #### Dónde vive cada parte del autómata
 
@@ -221,7 +238,7 @@ stateDiagram-v2
 Existe una variante, `EnemyPatrol3Puntos.cs`, para rutas de **exactamente 3 puntos recorridas de ida y vuelta** (`P1 → P2 → P3 → P2 → P1`): el enemigo recorre la ruta completa y regresa por sus propios pasos — útil para rutas en L sin diagonales. En los extremos (`P1` y `P3`) invierte el rumbo; en el punto central (el codo de la L) simplemente continúa.
 
 Ambas patrullas implementan la **interfaz `IEnemigoMovil`** (`TurnAround()` y `ApplyKnockback()`): `PlayerSword.cs` y `EnemyContactDamage.cs` obtienen el componente por interfaz (`GetComponent<IEnemigoMovil>()`), así que los sistemas de combate funcionan con cualquier tipo de patrulla presente o futura sin conocer su clase concreta (polimorfismo de interfaz).
-- **La guarda temporal `isHurt`** la administra `EnemyHealth.cs` con una coroutina de 0.3 s, lo que convierte a `EnemyHit` en un estado con salida temporizada (un temporizador dentro del estado, como en un autómata temporizado).
+- **La guarda temporal `isHurt`** la administra `EnemyHealth.cs` con una coroutina de 0.3 s: es un temporizador dentro del estado que respeta la guarda antes de permitir la salida.
 
 ---
 
