@@ -17,7 +17,7 @@ GameObject:
   - component: {fileID: 7401418845175356819}
   - component: {fileID: 6066075435954950546}
   m_Layer: 0
-  m_Name: Hongo2
+  m_Name: Enemy2
   m_TagString: Enemy
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

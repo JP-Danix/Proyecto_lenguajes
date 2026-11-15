@@ -1,4 +1,4 @@
-# Unity .gitignore Template
+﻿# Unity .gitignore Template
 # Source: https://github.com/github/gitignore/blob/main/Unity.gitignore
 # Last synced: 2026-07-02
 # License: CC0-1.0
@@ -112,3 +112,6 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Material del curso (PDFs de la profesora, uso local)
+/Teo* lenguajes/

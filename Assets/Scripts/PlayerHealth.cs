@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public enum HeartColor
 {
@@ -52,6 +53,25 @@ public class PlayerHealth : MonoBehaviour
 
     // El movimiento consulta esto para no pelear con el retroceso
     public bool IsKnockedBack => knockbackTimer > 0f;
+
+    // El jugador persiste entre niveles (el AFD de mapas lo hace global), y cada
+    // escena trae su propia HealthCanvas: al cargar una escena, se re-busca la UI
+    // de esa escena y se redibuja la pila actual. La pila NO se reinicia.
+    private void OnEnable()
+    {
+        SceneManager.sceneLoaded += ReconfigurarEnEscena;
+    }
+
+    private void OnDisable()
+    {
+        SceneManager.sceneLoaded -= ReconfigurarEnEscena;
+    }
+
+    private void ReconfigurarEnEscena(Scene escena, LoadSceneMode modo)
+    {
+        healthUI = FindFirstObjectByType<HealthUI>();
+        NotifyUI();
+    }
 
     void Start()
     {
