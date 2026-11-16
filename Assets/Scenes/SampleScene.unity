@@ -14108,6 +14108,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Key
       objectReference: {fileID: 0}
+    - target: {fileID: 2767780398028223802, guid: cfc19e6f3b0f18347925da7486eca3ef, type: 3}
+      propertyPath: m_SortingOrder
+      value: 5
+      objectReference: {fileID: 0}
     - target: {fileID: 5224107546245209967, guid: cfc19e6f3b0f18347925da7486eca3ef, type: 3}
       propertyPath: m_LocalPosition.x
       value: 5.03
