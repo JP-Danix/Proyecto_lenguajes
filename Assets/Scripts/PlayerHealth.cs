@@ -148,8 +148,11 @@ public class PlayerHealth : MonoBehaviour
         {
             if (hearts.Count == 0)
             {
-                Debug.Log("Game Over");
-                Destroy(gameObject); // luego: respawn o pantalla de muerte
+                // δ(q, daño, λ) no existe: la cadena deja de ser viable en ESTE símbolo.
+                // El rechazo se reporta aquí (no al final de la cadena) y su interfaz
+                // es la pantalla de Game Over — el panel oculto del HealthCanvas.
+                GameOverUI.Mostrar();
+                Destroy(gameObject); // la configuración muere; la pantalla y el mundo quedan
                 return;
             }
 

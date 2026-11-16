@@ -19,6 +19,14 @@ public class HeartPickup : MonoBehaviour
     // cargar: el InstanceID de un objeto recargado cambia, la posición no.
     private static readonly HashSet<string> recogidos = new HashSet<string>();
 
+    // Nueva partida: vacía el registro. Lo llama el botón de volver al menú
+    // (VolverAlMenu.cs) — la nueva corrida arranca con todos los corazones
+    // en el mundo, porque el registro es de LA CORRIDA, no del juego entero.
+    public static void ReiniciarRegistro()
+    {
+        recogidos.Clear();
+    }
+
     private string Clave()
     {
         return SceneManager.GetActiveScene().name + "|" +

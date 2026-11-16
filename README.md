@@ -808,6 +808,19 @@ stateDiagram-v2
 
 Agregar un nivel es agregar una escena, un `SpawnPoint`, sus puertas (casas lectoras y/o torres λ), sus pickups de letra y filas a la tabla — el autómata se extiende con datos, no con código. Nota de despliegue: las escenas de Q deben estar en la lista de escenas del build (File → Build Profiles → Scene List) para que `LoadScene` las encuentre.
 
+#### El interruptor de la máquina: menú de inicio y pantalla de rechazo (fuera de la quíntupla)
+
+La profesora abre la Unidad 1 con el ejemplo más simple de autómata: el interruptor ON/OFF — *"la entrada o interacción es la pulsación del interruptor"*. El **menú de inicio** (`Menu.unity`, primera de la lista del build) es exactamente eso: la pulsación que enciende la máquina. Por eso **no es un estado de Q**: no es una escena de Q, no lleva filas δ ni λ, y el `MapManager` no vive ahí. Sus dos botones son los únicos dos actos que existen fuera de la quíntupla:
+
+| Botón | Acto formal |
+|-------|-------------|
+| `JUGAR` | **Encender**: `LoadScene("SampleScene")` — la corrida arranca y el `MapManager` de esa escena (con `estadoInicial` vacío) adopta q0 |
+| `SALIR` | **Apagar del todo**: `Application.Quit()` (en el build cierra la aplicación; en el editor no hace nada) |
+
+El simétrico del encendido es la **pantalla de Game Over** — el rechazo del PDA hecho interfaz. Cuando el daño llega con la pila vacía, `δ(q, daño, λ)` no existe: la cadena deja de ser viable en **ese** símbolo exacto (el rechazo temprano, sección 4) y `PlayerHealth` activa el panel oculto del `HealthCanvas` (`GameOverUI.Mostrar()`). El panel vive dentro del prefab, inactivo por defecto — cada escena lo trae como trae la barra de corazones, y el rechazo es lo que lo despierta. Su letrero es la definición hecha texto: *"la pila se quedó vacía — δ(q, daño, λ) no existe"*.
+
+El botón `VOLVER AL MENU` (en Game Over y en Victory) es una **nueva corrida**, no una transición: formalmente `Victory` sigue absorbente (nadie sale de ella por δ ni λ — la tabla no cambia) y de Game Over no hay transición alguna. Lo que el botón hace es **apagar la máquina y volver a encenderla**: `VolverAlMenu.Volver()` vacía el registro de corazones recogidos (`HeartPickup.ReiniciarRegistro()` — el registro es de *la corrida*, no del juego entero), destruye al jugador persistente de la corrida anterior (con su pila y su cinta) y a su `MapManager`, carga el menú (fuera de Q), y de ahí `JUGAR` arranca de nuevo en q0 con la **configuración inicial restaurada**: pila nueva con su `Z0`, cinta vacía, corazones de vuelta al mundo. La lista del build queda con 7 escenas: `Menu` en la posición 0 (el interruptor, no es de Q) y las 6 escenas de Q.
+
 #### La conversión a AFD (el método del temario, aplicado a este autómata)
 
 El temario convierte un AFND-λ a AFD con la tabla de transiciones extendidas: una fila por estado, columnas por cada letra de Σ más la columna λ (la cerradura λ del estado: a dónde se puede llegar sin leer nada, incluido el propio estado). Las cerraduras λ de este autómata:
@@ -988,7 +1001,7 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 Proyecto_lenguajes/
 ├── Assets/
 │   ├── Animations/          # Clips .anim + Player.controller y Enemy.controller (las FSM)
-│   ├── Scenes/              # SampleScene.unity (escena principal)
+│   ├── Scenes/              # Menu (el interruptor, fuera de Q) + SampleScene, Nivel2-5, Victory (los estados de Q)
 │   ├── Scripts/             # Código C#
 │   │   ├── PlayerMovement.cs        # Movimiento; congela animación y velocidad al atacar o recibir knockback
 │   │   ├── PlayerAttack.cs          # isAttacking + cooldown 0.3 s + duración 0.4 s
@@ -1009,7 +1022,10 @@ Proyecto_lenguajes/
 │   │   ├── DoorTransition.cs        # Las dos clases de puerta: libre (λ, torres) y lectora (lee la cinta, casas)
 │   │   ├── LetraPickup.cs           # Una letra de Σ hecha pickup (llave, moneda): la escribe en la cinta
 │   │   ├── InventarioJugador.cs     # La cinta: letra pendiente, una por estado, consumo al ser leída
-│   │   └── SpawnPoint.cs            # Marca de aparición: la salida de δ al entrar a una escena
+│   │   ├── SpawnPoint.cs            # Marca de aparición: la salida de δ al entrar a una escena
+│   │   ├── MenuInicio.cs            # El interruptor ON/OFF (Unidad 1): JUGAR enciende la corrida en q0, SALIR apaga
+│   │   ├── VolverAlMenu.cs          # Nueva corrida: restaura la configuración inicial (corazones, pila, cinta) y va al menú
+│   │   └── GameOverUI.cs            # El rechazo del PDA hecho pantalla: activa el panel oculto del HealthCanvas
 │   ├── Sprites/             # Pixel art (jugador, hongo, tiles, colinas, deco, agua, Heart 1.png, Fire/Ice/Magic.png)
 │   ├── Prefabs/             # HeartIcon, HeartPickup, Player, HealthCanvas, Enemy, Fireball, Iceball, Magicball
 │   └── Settings/            # Configuración URP y Input System
@@ -1025,6 +1041,8 @@ Proyecto_lenguajes/
 | `SwordTrigger` (hijo de Player) | Collider 2D (trigger) + `PlayerSword` | Se posiciona delante del jugador según `Xinput`/`Yinput` |
 | `Enemy` | `EnemyPatrol`, `EnemyHealth`, `EnemyContactDamage` | Tag: `Enemy`. Ruta con `PointA`/`PointB` (si faltan, se auto-crean alrededor del punto inicial) |
 | `HealthCanvas` > `Hearts` | `HealthUI` + Horizontal Layout Group | El primer icono (izquierda) es la cima de la pila; iconos de 80×80 |
+| `HealthCanvas` > `GameOver` (inactivo) | Panel + `GameOverUI` + `VolverAlMenu` (en el panel) | La pantalla de rechazo del PDA: nace inactivo dentro del prefab y `PlayerHealth` lo despierta en el daño con pila vacía (`δ(q, daño, λ)` no existe). Su botón `VOLVER AL MENU` dispara `Volver()`: nueva corrida con la configuración inicial restaurada |
+| `MenuController` (en `Menu.unity`) | `MenuInicio` | El interruptor de la máquina: los botones `JUGAR`/`SALIR` del Canvas lo cablean en On Click (`Jugar()` / `Salir()`) |
 | `HeartPickup` | Sprite + Circle Collider 2D (Is Trigger) + `HeartPickup` | Campo `Type` define el color que hace PUSH; el script tinta el sprite según el tipo. **Una vez por partida**: al recogerse queda marcado en un registro global y no reaparece al recargar la escena |
 | Tilemaps `TreeCollition` / `TreeNotCollition` | Tilemap Collider 2D + Tilemap Renderer (Modo Individual, Order 4) | Mismo orden que el jugador: la profundidad la decide el sort por eje Y |
 | `Fireball` / `Iceball` / `Magicball` (prefabs) | Animator (clip de vuelo en bucle, ciclo 0.25 s), Rigidbody 2D (Gravity 0), Circle Collider 2D (Is Trigger), `Projectile`, Order in Layer 5 | Salida de los estados de aceptación de la gramática; hojas de sprites de 5 frames (320×32, PPU 32) |
