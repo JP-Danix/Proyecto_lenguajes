@@ -320,19 +320,61 @@ El sistema se ajusta a la séptupla canónica `M = (Q, Σ, Γ, δ, q0, Z0, F)`:
 
 | Componente | En el juego |
 |------------|-------------|
-| `Σ` (alfabeto de entrada) | `{daño, recoger(color)}` |
-| `Γ` (alfabeto de pila) | `{amarillo, azul, rojo}` |
+| `Q` (estados) | `{q_vivo}` — **un solo estado**: estar vivo. La invulnerabilidad (0.5 s) y el flash son efectos que acompañan la transición de `daño` (temporizadores), no estados del autómata |
+| `Σ` (alfabeto de entrada) | `{daño, recoger_amarillo, recoger_azul, recoger_rojo}` |
+| `Γ` (alfabeto de pila) | `{Rojo₁, Azul₂, Azul₁, Amarillo₃, Amarillo₂, Amarillo₁}` — cada color **y cada golpe restante** es un símbolo de pila distinto. El código lo almacena como `HeartColor` + `hitsLeft`: el subíndice es la lectura formal del mismo dato |
+| `δ` (función de transición) | Ternas `(estado, símbolo de entrada o λ, símbolo de pila)` — tabla completa en la subsección siguiente |
+| `q0` (estado inicial) | `q_vivo` |
 | `Z0` (símbolo inicial de pila) | Campo serializado `Z0` (`HeartColor`) en `PlayerHealth.cs`, con valor **rojo**. Es un símbolo único, no una lista: el sistema de tipos impide expresar una pila pre-cargada, así que la configuración inicial `(q0, Z0)` es canónica **por construcción** |
+| `F` (estados finales) | `{q_vivo}` — el sistema acepta **por estado final** (ver "Modo de aceptación" abajo) |
 | Configuración inicial | `(q0, Z0)` — la pila arranca con exactamente un símbolo, como exige la definición |
 
-Con esa configuración inicial, el rechazo y la recuperación mapean con toda precisión:
+#### La función de transición en los términos del temario
 
-- `δ(q, daño, λ)` **no existe**: un `daño` con la pila vacía no tiene transición definida, y un PDA rechaza exactamente cuando lee una entrada para la que no hay transición → **Game Over**.
-- `δ(q, recoger(color), λ)` **sí existe**: un `recoger` sobre la pila vacía apila el primer corazón. Por eso el jugador puede estar "vivo con pila vacía" (a un golpe del rechazo) y recuperarse recogiendo.
+El temario define cada transición como `δ(q, μ, β) = (q', Y)`: estando en `q`, leyendo `μ` y con `β` en la **cima** de la pila, el autómata pasa a `q'`, **desapila** `β` y **apila** la palabra `Y` — *"quedando la cabeza de Y en la cima"*. El propio ejemplo del temario usa la convención `β = λ` para una transición que **no desapila nada**: `δ = (q0, a, λ), (q0, A)` — lee `a`, no saca nada y mete `A`. La función de transición del juego, en esos términos exactos:
+
+| Transición | Lee | Desapila (β) | Apila (Y) | En el código |
+|------------|-----|--------------|-----------|--------------|
+| `δ(q_vivo, recoger_X, λ) = (q_vivo, Xₙ)` | recoger del color X | **nada** (λ) | el corazón nuevo, en la cima | `PushHeart(type)`: empuja sin consultar la pila — la transición no depende del tope |
+| `δ(q_vivo, daño, Xᵢ) = (q_vivo, Xᵢ₋₁)` con `i > 1` | daño | el corazón con `i` golpes | el mismo corazón con `i−1` | `TakeDamage`: `hits--` sobre la cima |
+| `δ(q_vivo, daño, X₁) = (q_vivo, ε)` | daño | el corazón con 1 golpe | nada (el corazón se rompió) | `TakeDamage`: `hearts.Pop()` |
+| `δ(q_vivo, daño, λ)` | — | — | — | **NO EXISTE** → Game Over |
+
+La simetría de esa tabla es la vida del jugador en dos reglas: **`recoger` con λ existe** — por eso puedes recoger corazones con la pila vacía y recuperarte — y **`daño` con λ no existe** — el único rechazo del autómata: un `daño` con la pila vacía no tiene transición definida, y un PDA rechaza exactamente cuando lee una entrada para la que no hay transición.
 
 Es la regla del temario al pie de la letra — *«Un AP no puede realizar ningún movimiento si la pila está vacía»* (Unidad 2). Y esa regla es la **razón formal de la existencia de `Z0`** en la séptupla: es el símbolo que garantiza que la pila nunca arranque vacía, para que el primer movimiento del autómata sea legal. En el juego esa garantía es el corazón rojo inicial — `Z0` no es adorno de la definición, es el primer golpe que puedes recibir.
 
-Esa asimetría es la vida del jugador en estado puro: la pila vacía es alcanzable en juego normal, y de ahí se sale solo por la izquierda del alfabeto (`recoger`), nunca por la derecha (`daño`).
+La asimetría es la vida del jugador en estado puro: la pila vacía es alcanzable en juego normal, y de ahí se sale solo por la izquierda del alfabeto (`recoger`), nunca por la derecha (`daño`).
+
+#### Una derivación completa (ID ⊢ ID)
+
+Una configuración instantánea (ID) del AP es la terna `(estado, entrada pendiente, pila)`, y cada movimiento es un `⊢`. La partida `recoger_azul · daño · daño · daño · daño` derivada paso a paso:
+
+```
+(q_vivo, recoger_azul · daño · daño · daño · daño, Rojo₁)          ID inicial (q0, w, Z0)
+   ⊢ recoger_azul: apila Azul₂ encima de Rojo₁
+(q_vivo, daño · daño · daño · daño,                 Azul₂ Rojo₁)
+   ⊢ daño: desapila Azul₂, apila Azul₁  (mismo corazón, un golpe menos)
+(q_vivo, daño · daño · daño,                        Azul₁ Rojo₁)
+   ⊢ daño: desapila Azul₁, apila ε  (el corazón azul se rompió)
+(q_vivo, daño · daño,                               Rojo₁)
+   ⊢ daño: desapila Rojo₁  (el corazón rojo se rompió)
+(q_vivo, daño,                                      ε)
+   ⊢ daño: δ(q_vivo, daño, λ) no existe → RECHAZO = Game Over
+```
+
+El corazón rojo nunca fue accesible hasta que el azul se rompió por completo: en cada movimiento solo se modifica el tope (LIFO) — los símbolos a media pila no se tocan sin quitar antes los que están encima de ellos.
+
+#### Modo de aceptación: por estado final
+
+El temario define **dos** modos de aceptación para un AP:
+
+- **Por estado final:** `L(P) = {w | (q0, w, Z0) ⊢* (q, ε, α)` con `q ∈ F` y **cualquier cadena de pila α**} — *"el contenido de la pila en dicho instante es irrelevante"*.
+- **Por pila vacía:** `N(P) = {w | (q0, w, Z0) ⊢* (q, ε, ε)}` para cualquier estado q — consumir la entrada **y** vaciar la pila a la vez.
+
+El PDA de vida acepta **por estado final**, con `F = {q_vivo}`: consumida la secuencia de eventos, el jugador sigue en el estado de aceptación **con cualquier pila** — tres corazones, uno, o ninguno. La pila vacía **no** es aceptación aquí: en la construcción del temario donde un AP de un solo estado acepta por pila vacía (la que traduce GIC → AP), vaciarse es la meta; en el juego, vaciarse solo significa que el próximo `daño` — la transición que no existe — será el rechazo. Serían modos incompatibles: aceptar por pila vacía premiaría exactamente la configuración que deja al jugador a un golpe de morir.
+
+Matiz honesto: en el AP clásico la entrada `w` es finita y conocida de antemano; en el juego la entrada es la secuencia de eventos que va ocurriendo. El sistema opera como **reconocedor en línea**: cada evento debe encontrar una transición definida en el momento, y lo que la partida garantiza es que *en todo prefijo* cada `daño` encontró una cima que desapilar — la propiedad de seguridad cuya única violación es la transición `δ(q, daño, λ)` que no existe.
 
 #### Por qué la pila es necesaria (y no un adorno)
 
@@ -345,7 +387,7 @@ Es la distinción clave frente a un contador de vida: un contador solo recuerda 
 | Símbolo de entrada | Origen en el código | Efecto sobre la pila |
 |--------------------|---------------------|----------------------|
 | `daño` | `PlayerHealth.TakeDamage(damage, hitDirection)`, llamado por `EnemyContactDamage.cs` | Resta 1 golpe al corazón de la **cima**; si sus golpes llegan a 0, la cima sale de la pila (POP) |
-| `recoger(color)` | `PlayerHealth.PushHeart(type)`, llamado por `HeartPickup.cs` al tocar el pickup | Apila un corazón nuevo del color dado (PUSH); la pila es **ilimitada**, así que la entrada siempre se acepta y el pickup se consume |
+| `recoger(color)` | `PlayerHealth.PushHeart(type)`, llamado por `HeartPickup.cs` al tocar el pickup | Apila un corazón nuevo del color dado (PUSH); la pila es **ilimitada**, así que la entrada siempre se acepta y el pickup se consume. Cada corazón se puede recoger **una sola vez por partida**: un registro global (`HashSet` estático en `HeartPickup`, clave escena + posición + nombre) marca los consumidos y al recargar la escena la copia recogida se autodestruye en `Awake`. Las letras (`LetraPickup`), en cambio, reaparecen por visita — el AFN-λ necesita re-escribirlas |
 
 #### Los símbolos de la pila (alfabeto de pila)
 
@@ -361,7 +403,7 @@ Cada `Heart` guarda además `hitsLeft`, el "desgaste" actual del símbolo en la 
 
 #### Estados de control
 
-El PDA tiene tres configuraciones globales:
+El PDA tiene cuatro configuraciones globales:
 
 | Estado | Condición | Salida |
 |--------|-----------|--------|
@@ -371,6 +413,8 @@ El PDA tiene tres configuraciones globales:
 | **Rechazo (Game Over)** | `hearts.Count == 0` | La cadena de entrada no fue aceptada: el jugador muere |
 
 #### Reglas de transición de la pila
+
+La misma δ de la tabla formal de arriba, vista desde la implementación (los símbolos subindicados `Xᵢ` aparecen aquí como un `Heart` con su `hitsLeft`):
 
 | Estado de la pila | Entrada | Acción (transición) |
 |-------------------|---------|---------------------|
@@ -638,7 +682,7 @@ Este autómata opera **un nivel de abstracción por encima** de todos los anteri
 | `Σ` (alfabeto) | Las letras que los pickups escriben en la cinta (`llave`, `moneda`, ...): el alfabeto es global, la cinta no |
 | `δ : Q × (Σ ∪ {λ}) → Q` | Los dos caminos de la misma función. **Con letra** (dominio Σ): lista serializada `transicionesLetra` `(estadoOrigen, letra) → (escenaDestino, spawnId)` - la dispara la puerta lectora al leer la cinta. **Con λ**: lista serializada `transicionesLambda` - las puertas libres (las torres) cambian de estado sin leer símbolo; su `Id Puerta` es bookkeeping interno para distinguirlas, no una letra de Σ. Ambas listas se compilan a índices `Dictionary` en `Awake()` |
 | `q0` | La escena donde vive el `MapManager` (campo `estadoInicial`). La definición del curso escribe `Q0 ⊆ Q` como **conjunto** de estados iniciales; el juego usa el caso de un solo elemento |
-| `F` (aceptación) | El nivel final: **llegar a él acepta la partida** — el recorrido completo es una cadena que termina en un estado de aceptación |
+| `F` (aceptación) | `F = {Victory}` — la escena de victoria, que **existe como escena real** (no como panel dentro de un nivel): 0 puertas y 0 pickups, **estado absorbente** — sin transiciones de salida, igual que `EnemyDie` en la FSM del enemigo: entra y ya no sale. Llegar a ella acepta la partida; la consola lo registra con el log de consumo de la letra que disparó la transición |
 
 #### Σ: las letras y la cinta
 
@@ -678,67 +722,127 @@ El jugador **persiste entre niveles** (`DontDestroyOnLoad`): cuando el AFN-λ de
 
 Como δ y λ son funciones distintas, cada una tiene su propia lista serializada — ninguna columna de "letra" contiene algo que no sea una letra de Σ:
 
-**δ — transiciones por letra** (las dispara la puerta lectora al leer la cinta):
+**δ — transiciones por letra** (las dispara la puerta lectora al leer la cinta; cada transición **consume** la letra leída):
 
 | Estado origen | Letra | Escena destino | Spawn |
 |---------------|-------|----------------|-------|
 | `SampleScene` | `llave` | `Nivel2` | `entrada` |
+| `Nivel2` | `moneda` | `Nivel3` | `entrada` |
+| `Nivel3` | `moneda` | `Nivel4` | `entrada` |
+| `Nivel3` | `llave` | `SampleScene` | `entrada` |
+| `Nivel4` | `llave` | `Nivel5` | `entrada` |
+| `Nivel4` | `moneda` | `Nivel2` | `entrada` |
+| `Nivel5` | `llave` | `Victory` | `entrada` |
 
 **λ — transiciones espontáneas** (las torres; el Id Puerta no es una letra de Σ):
 
 | Estado origen | Id Puerta | Escena destino | Spawn |
 |---------------|-----------|----------------|-------|
 | `Nivel2` | `torre` | `SampleScene` | `regreso` |
+| `Nivel3` | `torre` | `Nivel3` | `entrada` |
+| `Nivel4` | `torre` | `Nivel3` | `entrada` |
 
-La fila de δ la dispara la **puerta lectora** de la casa (lee la letra `llave` de la cinta); la de λ, la **torre** (regreso espontáneo). Con un segundo pickup (`moneda`) y una fila más en δ, la misma casa ramifica: `δ(q0, llave)` y `δ(q0, moneda)` llevan a niveles distintos — el mecanismo ya está en el código.
+La **cadena de victoria** (la palabra que lleva de `q0` a `F`): `llave · moneda · moneda · llave · llave` — `SampleScene → Nivel2 → Nivel3 → Nivel4 → Nivel5 → Victory`. Como cada transición **consume** la letra que lee, cada estado de decisión de la cadena necesita su propio pickup (por eso `Nivel4` y `Nivel5` tienen su llave: la de `SampleScene` ya se gastó al entrar a `Nivel2`). La fila `δ(Nivel4, moneda) = Nivel2` es un **atajo de regreso**: la moneda de `Nivel4` abre un ciclo hacia atrás, y `δ(Nivel3, llave) = SampleScene` otro — el autómata no es una cadena simple, es un grafo con ciclos. La fila de δ la dispara la **puerta lectora** de la casa (lee la letra que llevas); la de λ, la **torre** (cambio de estado sin leer nada).
 
 ```mermaid
 stateDiagram-v2
     direction LR
 
-    state "SampleScene (q0)" as A
-    state "Nivel2" as B
+    state "SampleScene (q0)" as S
+    state "Nivel2" as N2
+    state "Nivel3" as N3
+    state "Nivel4" as N4
+    state "Nivel5" as N5
+    state "Victory (★ F)" as V
 
-    [*] --> A
+    [*] --> S
 
-    A --> B : llave (puerta lectora)
-    B --> A : λ (torre)
+    S --> N2 : llave
+    N2 --> N3 : moneda
+    N3 --> N4 : moneda
+    N3 --> S : llave
+    N4 --> N5 : llave
+    N4 --> N2 : moneda (atajo)
+    N5 --> V : llave
+
+    N2 --> S : λ (torre)
+    N3 --> N3 : λ (torre)
+    N4 --> N3 : λ (torre)
 ```
+
+`Victory` es el único estado sin aristas de salida: en el mundo no tiene puertas ni pickups, así que nadie puede escribir una letra desde ahí — **el estado absorbente lo impone el mundo y la tabla lo registra** (ninguna fila δ ni λ tiene a `Victory` como origen). El no determinismo (qué puerta tomar, qué letra recoger) lo resuelve el jugador caminando: el autómata describe el conjunto de **todos los recorridos posibles**, y el lenguaje es el conjunto de secuencias de letras que admiten una partida ganada.
 
 Agregar un nivel es agregar una escena, un `SpawnPoint`, sus puertas (casas lectoras y/o torres λ), sus pickups de letra y filas a la tabla — el autómata se extiende con datos, no con código. Nota de despliegue: las escenas de Q deben estar en la lista de escenas del build (File → Build Profiles → Scene List) para que `LoadScene` las encuentre.
 
 #### La conversión a AFD (el método del temario, aplicado a este autómata)
 
-El temario convierte un AFND-λ a AFD con la tabla de transiciones extendidas: una fila por estado, columnas por cada letra de Σ más la columna λ (la cerradura λ del estado: a dónde se puede llegar sin leer nada, incluido el propio estado). Para este autómata:
+El temario convierte un AFND-λ a AFD con la tabla de transiciones extendidas: una fila por estado, columnas por cada letra de Σ más la columna λ (la cerradura λ del estado: a dónde se puede llegar sin leer nada, incluido el propio estado). Las cerraduras λ de este autómata:
 
-| Estado | `llave` | `λ` (cerradura) |
-|--------|---------|-----------------|
-| `SampleScene` | `{Nivel2}` | `{SampleScene}` |
-| `Nivel2` | `∅` (sin transición definida) | `{Nivel2, SampleScene}` |
+| Estado | `λ` (cerradura) |
+|--------|-----------------|
+| `SampleScene` | `{SampleScene}` |
+| `Nivel2` | `{Nivel2, SampleScene}` — la torre ofrece el regreso espontáneo |
+| `Nivel3` | `{Nivel3}` — su torre regresa al mismo estado (respawn) |
+| `Nivel4` | `{Nivel4, Nivel3}` |
+| `Nivel5` | `{Nivel5}` |
+| `Victory` | `{Victory}` — absorbente, sin λ |
 
-La cerradura λ de `Nivel2` contiene a `SampleScene` porque la torre ofrece el regreso espontáneo. La construcción de subconjuntos parte de `q0' = cerradura λ(q0)` y completa la tabla del AFD cerrando cada conjunto con δ:
+Y las transiciones extendidas `δ(q, letra) = cerradura λ(destino)`:
 
-| Paso | Resultado |
-|------|-----------|
-| `q0' = cerradura λ(SampleScene)` | `A = {SampleScene}` |
-| `δ'(A, llave) = cerradura λ({Nivel2})` | `B = {Nivel2, SampleScene}` |
-| `δ'(B, llave) = cerradura λ({Nivel2})` | `B` (de `Nivel2` sale la misma transición; de `SampleScene`, que también vive en `B`, otra vez `Nivel2`) |
-| Estados de aceptación `F'` | `{B}` — el conjunto que contiene a `Nivel2`, el nivel final |
+| Estado | `llave` | `moneda` |
+|--------|---------|----------|
+| `SampleScene` | `{Nivel2, SampleScene}` | `∅` |
+| `Nivel2` | `∅` (sin transición definida) | `{Nivel3}` |
+| `Nivel3` | `{SampleScene}` | `{Nivel4, Nivel3}` |
+| `Nivel4` | `{Nivel5}` | `{Nivel2, SampleScene}` |
+| `Nivel5` | `{Victory}` | `∅` |
+| `Victory` | `∅` | `∅` |
+
+La construcción de subconjuntos parte de `q0' = cerradura λ(q0)` y completa la tabla del AFD cerrando cada conjunto con δ — cada conjunto nuevo es un estado del AFD:
+
+| Estado AFD | Conjunto | `δ'(·, llave)` | `δ'(·, moneda)` |
+|------------|----------|----------------|-----------------|
+| `A = q0'` | `{SampleScene}` | `B` | `∅` |
+| `B` | `{Nivel2, SampleScene}` | `B` | `C` |
+| `C` | `{Nivel3}` | `A` | `D` |
+| `D` | `{Nivel4, Nivel3}` | `E` | `H` |
+| `E` | `{Nivel5, SampleScene}` | `J` | `∅` |
+| `H` | `{Nivel2, SampleScene, Nivel3, Nivel4}` | `I` | `H` |
+| `I` | `{Nivel2, SampleScene, Nivel5}` | `J` | `C` |
+| `J` | `{Nivel2, SampleScene, Victory}` | `B` | `C` |
+
+El AFD tiene 8 estados, y `F' = {J}` — el único conjunto que contiene a `Victory`. La **palabra más corta que acepta** es la cadena de victoria: `llave · moneda · moneda · llave · llave` (`A → B → C → D → E → J`). El atajo de `Nivel4` abre palabras alternativas: `llave · moneda³ · llave · llave` pasa por `D —moneda→ H —llave→ I —llave→ J`, y el ciclo `H —moneda→ H` admite cualquier cantidad de monedas extra — **el lenguaje es infinito** (también ciclan `B —llave→ B`, realizable en el juego: torre de `Nivel2` de regreso a `SampleScene`, y la llave reaparece por la regla de la cinta). Todas las palabras ganadas terminan en `J`.
 
 ```mermaid
 stateDiagram-v2
     direction LR
 
-    state "A = {SampleScene}" as A
-    state "B = {Nivel2, SampleScene}" as B
+    state "A = {S}" as A
+    state "B = {N2, S}" as B
+    state "C = {N3}" as C
+    state "D = {N4, N3}" as D
+    state "E = {N5, S}" as E
+    state "H = {N2, S, N3, N4}" as H
+    state "I = {N2, S, N5}" as I
+    state "J = {N2, S, V} ★F'" as J
 
     [*] --> A
     A --> B : llave
     B --> B : llave
-    B --> [*]
+    B --> C : moneda
+    C --> A : llave
+    C --> D : moneda
+    D --> E : llave
+    D --> H : moneda
+    H --> I : llave
+    H --> H : moneda
+    I --> J : llave
+    I --> C : moneda
+    E --> J : llave
+    J --> [*]
 ```
 
-`B` es la clausura λ hecha estado: el AFD ya no necesita la torre porque **la torre quedó absorbida dentro de `B`** — estar en `B` significa "llegaste a `Nivel2` (aceptación) o ya regresaste a `SampleScene`". La ambigüedad que en el juego resuelve el jugador caminando (o no) hacia la torre, en el AFD vive dentro del propio estado: AFND ≡ AFD, con `M' = (Q', Σ, δ', q0', F')` la misma partida descrita sin transiciones espontáneas.
+`B` y `D` son las clausuras λ hechas estado: el AFD ya no necesita torres porque **las torres quedaron absorbidas dentro de los conjuntos** — estar en `B` significa "llegaste a `Nivel2` o ya regresaste a `SampleScene`"; estar en `D`, "llegaste a `Nivel4` o ya caíste a `Nivel3` con su torre". Matiz honesto: formalmente `δ'(J, llave) = B` y `δ'(J, moneda) = C` existen en la tabla (porque `SampleScene ∈ J`), pero son **inalcanzables en la corrida** — `Victory` no tiene puertas ni pickups, nadie puede escribir una letra desde el estado de aceptación: la tabla es fiel al método, y el mundo impone la absorción. La ambigüedad que en el juego resuelve el jugador caminando (o no) hacia la torre, en el AFD vive dentro del propio estado: AFND ≡ AFD, con `M' = (Q', Σ, δ', q0', F')` la misma partida descrita sin transiciones espontáneas — construcción replicable en JFLAP con *Convert to DFA*.
 
 | Concepto formal | Implementación |
 |-----------------|----------------|
@@ -752,7 +856,7 @@ stateDiagram-v2
 | Función de transición δ | Lista serializada `transicionesLetra` + índice `deltaLetra` (Dictionary) en `Awake()` |
 | Acciones de la transición | `LoadScene(escenaDestino)` + colocación en el `SpawnPoint` + reconexión de cámara y UI |
 | Estado inicial `q0` | Campo `estadoInicial` (por defecto, la escena activa al arrancar) |
-| Estado de aceptación `F` | El nivel final: planificado como estado especial (pantalla de victoria) |
+| Estado de aceptación `F` | `F = {Victory}`: escena real de victoria, estado absorbente (sin puertas ni pickups — nadie puede escribir una letra desde ahí) |
 | Rechazo | Puerta lectora sin letra / pickup en estado con letra escrita / símbolo sin fila δ: log y sin efecto |
 | Persistencia del jugador | `DontDestroyOnLoad` + deduplicación por escena + reconexión de UI (`PlayerHealth.ReconfigurarEnEscena()`) |
 
@@ -840,7 +944,7 @@ En el editor de Unity, arrastrar a `Assets/Prefabs`:
 | Guardas temporales | **Autómatas temporizados**: transiciones condicionadas por tiempo acumulado; convierten eventos continuos por frame en símbolos discretos. | Cooldowns en `PlayerAttack.cs`, `PlayerSword.cs`, `EnemyContactDamage.cs`, `PlayerHealth.cs` |
 | Ciclo de ataque con Animation Event | Distinción entre **entrada de la FSM** (`isAttacking`) y **acciones de salida** (`ResetAttack()` como evento generado por la animación), y el papel de las **guardas temporales** (cooldown, exit time). | `PlayerAttack.cs` + clips de ataque |
 | Combos de teclas | **Gramática de traducción (tipo 3 de Chomsky) compilada a AFD**: las producciones se serializan como datos en el Inspector y se compilan a un trie determinista en `Awake()` (teorema de Kleene: gramática regular ↔ autómata finito). Toda cadena es `dirección · combo · ⊢`: el **primer símbolo fija la dirección del proyectil** (viaja dentro de la cadena, sin estado externo), el **delimitador `⊢` (Espacio)** la cierra — reconocimiento de libro, sin lógica temporal y aceptación diferida sin ambigüedad de prefijos — y la copia del trie por dirección recuerda la dirección elegida. Cada derivación termina en un **terminal semántico** (`fuego`, `hielo`, `magia`) y una **tabla de símbolos** (capa semántica separada de la sintaxis) lo traduce a la acción en el mundo: el efecto es función exclusiva de la cadena aceptada. | `ComboController.cs`, `Projectile.cs` |
-| Traspaso de niveles (mapas) | **AFN-λ con la transición serializada como dato**: Q = escenas, Σ = las letras que los pickups escriben en la cinta del jugador (`llave`, `moneda` — el alfabeto es global, la cinta por estado), δ = tabla en el Inspector. La puerta de una casa **lee la letra que llevas** y eso dispara la transición (que la consume); las torres son transiciones λ. Tres rechazos con la misma semántica (entrada sin transición = ignorar) y rechazo temprano (prefijo viable). Con el método del temario — conversión de un AFND a AFD con transiciones Lambda (tabla extendidas + construcción de subconjuntos, validada en JFLAP): AFN-λ ≡ AFD — el no determinismo lo resuelve el jugador caminando. El nivel final es el estado de aceptación. El jugador-PDA persiste entre estados (su pila no se reinicia); la cinta, no. | `MapManager.cs`, `DoorTransition.cs`, `LetraPickup.cs`, `InventarioJugador.cs`, `SpawnPoint.cs` |
+| Traspaso de niveles (mapas) | **AFN-λ con la transición serializada como dato**: Q = escenas, Σ = las letras que los pickups escriben en la cinta del jugador (`llave`, `moneda` — el alfabeto es global, la cinta por estado), δ = tabla en el Inspector. La puerta de una casa **lee la letra que llevas** y eso dispara la transición (que la consume); las torres son transiciones λ. Tres rechazos con la misma semántica (entrada sin transición = ignorar) y rechazo temprano (prefijo viable). Con el método del temario — conversión de un AFND a AFD con transiciones Lambda (tabla extendidas + construcción de subconjuntos, validada en JFLAP): AFN-λ ≡ AFD — el no determinismo lo resuelve el jugador caminando. El estado de aceptación es una escena real (`Victory`), absorbente: sin puertas ni pickups. El jugador-PDA persiste entre estados (su pila no se reinicia); la cinta, no. | `MapManager.cs`, `DoorTransition.cs`, `LetraPickup.cs`, `InventarioJugador.cs`, `SpawnPoint.cs` |
 
 ---
 
@@ -857,7 +961,7 @@ Proyecto_lenguajes/
 │   │   ├── PlayerSword.cs           # Hitbox de la espada; hitCooldown 0.5 s; knockback al enemigo
 │   │   ├── PlayerHealth.cs          # PDA de la vida: Stack<Heart>, PUSH/POP, flash, knockback, i-frames
 │   │   ├── HealthUI.cs              # Dibuja la pila de corazones (tinte + oscurecido por daño)
-│   │   ├── HeartPickup.cs           # Trigger de recogida: PUSH a la pila (siempre acepta: pila ilimitada)
+│   │   ├── HeartPickup.cs           # Trigger de recogida: PUSH a la pila (siempre acepta) — una vez por partida (registro global)
 │   │   ├── EnemyPatrol.cs           # Patrulla A/B (ping-pong); escribe Speed; TurnAround(); ApplyKnockback()
 │   │   ├── EnemyPatrol3Puntos.cs    # Patrulla de 3 puntos con ida y vuelta (rutas en L)
 │   │   ├── IEnemigoMovil.cs         # Interfaz común de las patrullas (TurnAround + ApplyKnockback)
@@ -887,7 +991,7 @@ Proyecto_lenguajes/
 | `SwordTrigger` (hijo de Player) | Collider 2D (trigger) + `PlayerSword` | Se posiciona delante del jugador según `Xinput`/`Yinput` |
 | `Enemy` | `EnemyPatrol`, `EnemyHealth`, `EnemyContactDamage` | Tag: `Enemy`. Ruta con `PointA`/`PointB` (si faltan, se auto-crean alrededor del punto inicial) |
 | `HealthCanvas` > `Hearts` | `HealthUI` + Horizontal Layout Group | El primer icono (izquierda) es la cima de la pila; iconos de 80×80 |
-| `HeartPickup` | Sprite + Circle Collider 2D (Is Trigger) + `HeartPickup` | Campo `Type` define el color que hace PUSH; el script tinta el sprite según el tipo |
+| `HeartPickup` | Sprite + Circle Collider 2D (Is Trigger) + `HeartPickup` | Campo `Type` define el color que hace PUSH; el script tinta el sprite según el tipo. **Una vez por partida**: al recogerse queda marcado en un registro global y no reaparece al recargar la escena |
 | Tilemaps `TreeCollition` / `TreeNotCollition` | Tilemap Collider 2D + Tilemap Renderer (Modo Individual, Order 4) | Mismo orden que el jugador: la profundidad la decide el sort por eje Y |
 | `Fireball` / `Iceball` / `Magicball` (prefabs) | Animator (clip de vuelo en bucle, ciclo 0.25 s), Rigidbody 2D (Gravity 0), Circle Collider 2D (Is Trigger), `Projectile`, Order in Layer 5 | Salida de los estados de aceptación de la gramática; hojas de sprites de 5 frames (320×32, PPU 32) |
 | `MapManager` (GameObject vacío) | `MapManager` | El AFN-λ de mapas (sección 7): `Transiciones Letra` serializa δ y `Transiciones Lambda` las transiciones espontáneas (el `Id Puerta` de cada fila es bookkeeping, no letra de Σ). `Estado Inicial` es q0. Persiste entre escenas (`DontDestroyOnLoad` automático) y reinicia la cinta al entrar a cada estado |

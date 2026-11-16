@@ -59,7 +59,19 @@ MonoBehaviour:
     spawnId: entrada
   - estadoOrigen: Nivel3
     letra: llave
-    escenaDestino: Nivel4
+    escenaDestino: SampleScene
+    spawnId: entrada
+  - estadoOrigen: Nivel4
+    letra: llave
+    escenaDestino: Nivel5
+    spawnId: entrada
+  - estadoOrigen: Nivel4
+    letra: moneda
+    escenaDestino: Nivel2
+    spawnId: entrada
+  - estadoOrigen: Nivel5
+    letra: llave
+    escenaDestino: Victory
     spawnId: entrada
   transicionesLambda:
   - estadoOrigen: Nivel2
@@ -67,6 +79,10 @@ MonoBehaviour:
     escenaDestino: SampleScene
     spawnId: regreso
   - estadoOrigen: Nivel3
+    idPuerta: torre
+    escenaDestino: Nivel3
+    spawnId: entrada
+  - estadoOrigen: Nivel4
     idPuerta: torre
     escenaDestino: Nivel3
     spawnId: entrada
