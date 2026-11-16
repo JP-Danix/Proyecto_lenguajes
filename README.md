@@ -576,6 +576,40 @@ S ⇒ w S_w ⇒ wb A_w ⇒ wbb B_w ⇒ wbbn⊢fuego↑
 
 El compilador (`CompilarGramatica()`) agrega el símbolo delimitador al final de cada producción (y si el usuario lo escribiera a mano, lo respeta en vez de duplicarlo), y construye el camino de cada producción **en 4 copias, una por dirección**, porque la dirección elegida al inicio debe recordarse en los estados hasta la aceptación (un AFD solo recuerda en sus estados).
 
+#### La cuádrupla de la gramática (notación clásica)
+
+El curso define una gramática formal como la **cuádrupla** `G = (V_N, V_T, P, S)` (Unidad 2): no terminales, terminales, producciones y símbolo inicial. La gramática de los combos, escrita en notación clásica (se muestra la copia de la dirección `↑`; las otras tres son idénticas):
+
+| Componente | En el juego |
+|------------|-------------|
+| `V_N` (no terminales) | Un no terminal por "posición del combo" y dirección: `{S, S_↑, A_↑, B_↑, C_↑, D_↑, …}` — **en el código son los nodos del trie**: cada `Nodo` es una variable y sus `transiciones` son los cuerpos de sus producciones |
+| `V_T` (terminales de entrada) | Las teclas: `{↑, ↓, ←, →, B, N, M, G, ⊢}` — el alfabeto de `LeerSimbolo()` (A-Z menos las 4 reservadas de dirección) |
+| `V_T` semánticos (terminales de salida) | `{fuego, hielo, magia}` — **viajan dentro de la cadena generada**; no son teclas, son la parte de traducción |
+| `P` (producciones) | La lista serializada `combos` del Inspector, completada por el compilador con la dirección inicial y el `⊢` final |
+| `S` (símbolo inicial) | La raíz del trie (`raiz` en `ComboController.cs`) |
+
+```
+S     → ↑ S_↑  |  ↓ S_↓  |  ← S_←  |  → S_→      (la dirección elige la copia)
+S_↑   → b A_↑  |  g D_↑                            (primer B: Fuego/Hielo comparten prefijo; G: Magia)
+A_↑   → b B_↑  |  n C_↑                            (segunda letra decide la rama)
+B_↑   → n ⊢ fuego↑                                 (cierre de Fuego)
+C_↑   → m ⊢ hielo↑                                 (cierre de Hielo)
+D_↑   → ⊢ magia↑                                   (cierre de Magia)
+```
+
+Todas las producciones cumplen la **forma tipo 3**: la izquierda tiene un solo no terminal, y la derecha o es una cadena de terminales (`B_↑ → n ⊢ fuego↑`) o es **terminal · no terminal** con el no terminal al final (`S_↑ → b A_↑`) — lineal por la derecha, exactamente la forma que el curso asigna a las gramáticas regulares (Unidad 2), la que genera los lenguajes de los autómatas finitos. Es una gramática **determinista**: cada variable tiene a lo sumo una producción por símbolo inicial del cuerpo, así que no hay ambigüedad de prefijos que resolver — por eso compila a un AFD **sin construcción de subconjuntos** (compárese con el AFN-λ de mapas, donde la conversión sí hace falta).
+
+#### La compilación: producción → transición (el teorema de Kleene en `Awake()`)
+
+El curso enuncia la equivalencia en la jerarquía de Chomsky: las gramáticas tipo 3 *"generan los lenguajes regulares — Autómata finito"* (Unidad 2). `CompilarGramatica()` ejecuta la construcción canónica gramática → autómata:
+
+| Producción | Se compila en |
+|------------|---------------|
+| `X → aY` | transición `δ(X, a) = Y` |
+| `X → w` (cierre, solo terminales) | transición `δ(X, último(w)) = f`, con `f` **estado aceptador** que recuerda `(terminal semántico, dirección)` |
+
+Y el resultado es un AFD en la **quíntupla** del curso `M = (Σ, Q, q0, F, δ)` (Unidad 1): `Σ` son las teclas, `Q` son los nodos del trie (las variables de `V_N` **hechas estados**, más los aceptadores), `q0` es la raíz, `F` son los 12 nodos con `simboloSalida` (3 combos × 4 direcciones) y `δ` es el `Dictionary<KeyCode, Nodo>` de cada nodo — literalmente *"toma como argumentos un estado y un símbolo de entrada y devuelve un estado"*. La **aceptación** es por estado final: el único símbolo que mete a la cadena en un aceptador es el delimitador `⊢` — sin él, la cadena termina en un estado no aceptador y no pertenece al lenguaje (Unidad 1). La derivación completa con su aceptación se leyó arriba: `S ⇒ ↑S_↑ ⇒ ↑bA_↑ ⇒ ↑bbB_↑ ⇒ ↑bbn⊢fuego↑` — cada paso una producción, y la dirección `↑` elegida al inicio **sobrevive en los estados** hasta el aceptador (por eso las 4 copias).
+
 #### Sintaxis vs. semántica: la tabla de símbolos
 
 Una gramática solo dice **qué cadenas pertenecen al lenguaje** — es pura sintaxis y no puede "hacer" nada. Por eso la salida vive en una capa separada, como en un compilador:
