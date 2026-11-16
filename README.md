@@ -403,14 +403,14 @@ Cada `Heart` guarda además `hitsLeft`, el "desgaste" actual del símbolo en la 
 
 #### Estados de control
 
-El PDA tiene cuatro configuraciones globales:
+Las cuatro filas siguientes son **configuraciones de implementación** — condiciones observables del código, no estados de un autómata: el `Q` formal del PDA sigue siendo `{q_vivo}`, el único estado (ver la séptupla de arriba):
 
 | Estado | Condición | Salida |
 |--------|-----------|--------|
-| **Viva** | `hearts.Count > 0` | La UI dibuja la pila (ver abajo) |
+| **Viva** | Siempre que no haya rechazo (la pila puede tener cualquier tamaño, incluso vacía) | La UI dibuja la pila |
 | **Vulnerable** | Viva ∧ `invulnerabilityTimer == 0` | Puede recibir `daño` |
 | **Invulnerable** | Viva ∧ `invulnerabilityTimer > 0` | Ignora `daño` (ventana de 0.5 s con parpadeo) |
-| **Rechazo (Game Over)** | `hearts.Count == 0` | La cadena de entrada no fue aceptada: el jugador muere |
+| **Rechazo (Game Over)** | Llega un `daño` con `hearts.Count == 0` (δ(q, daño, λ) no existe) | El jugador muere |
 
 #### Reglas de transición de la pila
 
@@ -472,7 +472,6 @@ Los **pickups del mapa** también visten el color de su tipo: `HeartPickup.cs` t
 | Símbolo inicial de pila `Z0` | Campo serializado `Z0` (rojo) en `PlayerHealth.cs`: la pila arranca con exactamente un símbolo, `(q0, Z0)` |
 | La pila | `Stack<Heart> hearts` en `PlayerHealth.cs` — **ilimitada**: crece con cada `recoger`, sin tope de profundidad |
 | Función de transición | El `for` dentro de `TakeDamage()` (POP/desgaste) y el `Push` incondicional de `PushHeart()` (no hay guardas: la pila nunca está "llena") |
-| Estado de rechazo | `hearts.Count == 0` → "Game Over" |
 | Estado invulnerable con temporizador | `invulnerabilityTimer` (0.5 s de parpadeo) |
 | Poder expresivo | Pila ilimitada → infinitas configuraciones → lenguaje no regular (prefijos balanceados `#recoger ≥ #daño`); un contador acotado solo alcanzaría un lenguaje regular |
 | Estado de rechazo | `daño` cuando `hearts.Count == 0` (δ(q, daño, λ) no existe) → "Game Over"; el POP que deja la pila vacía **no** mata |
@@ -590,8 +589,8 @@ El curso define una gramática formal como la **cuádrupla** `G = (V_N, V_T, P, 
 
 ```
 S     → ↑ S_↑  |  ↓ S_↓  |  ← S_←  |  → S_→      (la dirección elige la copia)
-S_↑   → b A_↑  |  g D_↑                            (primer B: Fuego/Hielo comparten prefijo; G: Magia)
-A_↑   → b B_↑  |  n C_↑                            (segunda letra decide la rama)
+S_↑   → b A_↑                                      (todos los combos empiezan con B)
+A_↑   → b B_↑  |  n C_↑  |  g D_↑                  (la segunda letra decide la rama)
 B_↑   → n ⊢ fuego↑                                 (cierre de Fuego)
 C_↑   → m ⊢ hielo↑                                 (cierre de Hielo)
 D_↑   → ⊢ magia↑                                   (cierre de Magia)
@@ -626,32 +625,32 @@ En `Awake()`, `CompilarGramatica()` convierte la lista de producciones en un **t
 ```mermaid
 stateDiagram-v2
     direction LR
-
     state "q0 (inicial)" as q0
-    state "q1 (copia ↑: tras la dirección)" as q1
+    state "q1 (tras dirección ↑)" as q1
     state "q2 (tras B)" as q2
-    state "q3 (tras B B)" as qF
-    state "q4 (tras B N)" as q3
-    state "q5 (tras G)" as q7
-    state "q6 (acepta → fuego ↑)" as q5
-    state "q7 (acepta → hielo ↑)" as q6
-    state "q8 (acepta → magia ↑)" as q8
+    state "q3 (tras B B)" as q3
+    state "q4 (tras B N)" as q4
+    state "q5 (tras B G)" as q5
+    state "q6 (tras B B N)" as q6
+    state "q7 (tras B N M)" as q7
+    state "f1 (acepta → fuego ↑)" as f1
+    state "f2 (acepta → hielo ↑)" as f2
+    state "f3 (acepta → magia ↑)" as f3
 
     [*] --> q0
-
     q0 --> q1 : dirección ↑ (↓, ← y → tienen copias idénticas)
-
     q1 --> q2 : B
     q2 --> q3 : B
-    q1 --> q4 : N
-    q1 --> q5 : G
-
-    q3 --> q6 : N ⊢
-    q4 --> q7 : M ⊢
-    q5 --> q8 : ⊢
+    q2 --> q4 : N
+    q2 --> q5 : G
+    q3 --> q6 : N
+    q4 --> q7 : M
+    q6 --> f1 : ⊢
+    q7 --> f2 : ⊢
+    q5 --> f3 : ⊢
 ```
 
-Los tres estados de aceptación de cada copia direccional (`q6`, `q7`, `q8` en la copia ↑) se alcanzan **solo con el símbolo delimitador `⊢`** y almacenan el par *(terminal semántico, dirección)* de su derivación. Al entrar en uno de ellos, la cadena aceptada — que ya trae su dirección y su comando — pasa a la capa semántica y el autómata vuelve al estado inicial. Nótese que la salida **no vive en el autómata**: viaja dentro de la cadena como terminal semántico, y la tabla de símbolos la traduce a la acción — la separación sintaxis/semántica de un compilador.
+Los tres estados de aceptación de cada copia direccional (`f1`, `f2`, `f3` en la copia ↑) se alcanzan **solo con el símbolo delimitador `⊢`** y almacenan el par *(terminal semántico, dirección)* de su derivación. Al entrar en uno de ellos, la cadena aceptada — que ya trae su dirección y su comando — pasa a la capa semántica y el autómata vuelve al estado inicial. Nótese que la salida **no vive en el autómata**: viaja dentro de la cadena como terminal semántico, y la tabla de símbolos la traduce a la acción — la separación sintaxis/semántica de un compilador.
 
 #### Funcionamiento del reconocedor (Update)
 
@@ -968,13 +967,6 @@ Si algo se asigna a mano, el código lo respeta (compatibilidad con la escena ac
 3. Arrastrar los prefabs a la escena: `Player`, `HealthCanvas` y `Enemy` (cada uno ya trae sus componentes, tags y referencias internas). Para más enemigos, duplicar el prefab `Enemy` y configurar su patrulla: `PointA`/`PointB` (ping-pong) o el componente `EnemyPatrol3Puntos` para rutas de 3 puntos en L.
 4. Colocar pickups `HeartPickup` (cambiar `Type` por instancia si se quiere otro color) y los triggers `Entry`/`Exit` de la colina.
 5. Verificar en el Inspector: `Entry` y `Exit` con las listas de colliders **vacías** (se auto-cablean al Play).
-
-### Prefabs pendientes de crear (una sola vez)
-
-En el editor de Unity, arrastrar a `Assets/Prefabs`:
-- **Player** (con su hijo `SwordTrigger`): trae movimiento, ataque, vida PDA y el tag `Player` correcto.
-- **HealthCanvas** (con su hijo `Hearts`): trae el script `HealthUI` con sus referencias ya conectadas.
-- **Enemy**: tras el cambio de auto-puntos, queda 100% auto-contenido.
 
 ---
 
