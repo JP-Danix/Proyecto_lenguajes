@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 8696332204428843575}
   - component: {fileID: 8248511222520613065}
   - component: {fileID: 2603388209967326617}
-  - component: {fileID: 3246766821584595984}
   - component: {fileID: 8187895061079108269}
   - component: {fileID: 7401418845175356819}
   - component: {fileID: 6066075435954950546}
@@ -162,7 +161,7 @@ BoxCollider2D:
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 1, y: 1.0625}
+    oldSize: {x: 1.3333334, y: 1.4166666}
     newSize: {x: 1, y: 1}
     adaptiveTilingThreshold: 0.5
     drawMode: 0
@@ -170,23 +169,6 @@ BoxCollider2D:
   m_AutoTiling: 0
   m_Size: {x: 0.69068336, y: 0.8617151}
   m_EdgeRadius: 0
---- !u!114 &3246766821584595984
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1367227390244480628}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4e354f7196273df4d83d999837bf4812, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::EnemyPatrol
-  speed: 2
-  pointA: {fileID: 0}
-  pointB: {fileID: 0}
-  animator: {fileID: 8187895061079108269}
-  patrolDistance: 3
 --- !u!95 &8187895061079108269
 Animator:
   serializedVersion: 7

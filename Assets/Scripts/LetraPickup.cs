@@ -22,7 +22,7 @@ public class LetraPickup : MonoBehaviour
         string estado = SceneManager.GetActiveScene().name;
         if (!inventario.PuedeRecogerEn(estado))
         {
-            Debug.LogWarning("Rechazo del pickup: en '" + estado + "' ya se escribió una letra — este símbolo queda inerte para esta partida");
+            Debug.LogWarning("Rechazo del pickup: en '" + estado + "' ya se escribió una letra en esta visita — este símbolo queda inerte hasta reingresar al estado");
             return;
         }
 

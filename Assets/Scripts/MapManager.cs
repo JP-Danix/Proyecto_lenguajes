@@ -27,6 +27,11 @@ public class MapManager : MonoBehaviour
 {
     public static MapManager Instance { get; private set; }
 
+    // El jugador persistente que este autómata globalizó (null hasta la primera
+    // carga de escena). PlayerHealth lo consulta para saber si es el sobreviviente:
+    // las copias que trae cada escena no deben dibujar UI ni apilar Z0.
+    public GameObject JugadorPersistente => jugador;
+
     [System.Serializable]
     public class TransicionLetra
     {

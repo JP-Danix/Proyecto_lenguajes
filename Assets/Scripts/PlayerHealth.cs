@@ -69,8 +69,23 @@ public class PlayerHealth : MonoBehaviour
 
     private void ReconfigurarEnEscena(Scene escena, LoadSceneMode modo)
     {
+        // Solo el jugador persistente redibuja. Las copias que trae cada escena
+        // tienen la pila vacía (su Start no corrió) y mueren al final del frame:
+        // si dibujaran, borrarían los iconos que el persistente acaba de pintar
+        // y el canvas quedaría vacío hasta el próximo evento (pickup o daño).
+        if (!EsElJugadorPersistente()) return;
+
         healthUI = FindFirstObjectByType<HealthUI>();
         NotifyUI();
+    }
+
+    // ¿Soy el jugador global que sobrevive los cambios de estado? Sin MapManager
+    // en escena, o antes de la primera carga, todos se comportan como locales.
+    private bool EsElJugadorPersistente()
+    {
+        if (MapManager.Instance == null) return true;
+        GameObject persistente = MapManager.Instance.JugadorPersistente;
+        return persistente == null || persistente == gameObject;
     }
 
     void Start()
@@ -89,8 +104,13 @@ public class PlayerHealth : MonoBehaviour
         // Configuración inicial (q0, Z0): la pila arranca con el símbolo inicial Z0,
         // exactamente un elemento, como exige la definición del PDA. La serialización
         // es un solo HeartColor (no una lista): no se puede expresar una pila pre-cargada.
-        hearts.Push(new Heart(Z0));
-        NotifyUI();
+        // Solo el persistente la ejecuta: una copia que apilara Z0 mentiría sobre
+        // el estado real de la partida (el persistente puede tener varios corazones).
+        if (EsElJugadorPersistente())
+        {
+            hearts.Push(new Heart(Z0));
+            NotifyUI();
+        }
     }
 
     void Update()
@@ -154,6 +174,18 @@ public class PlayerHealth : MonoBehaviour
             knockbackTimer = knockbackDuration;
         }
         NotifyUI();
+    }
+
+    // Retroceso SIN daño: el rebote del jugador cuando su propio ataque conecta
+    // con la espada. Congela el control un momento (mismo mecanismo que el
+    // knockback: PlayerMovement consulta IsKnockedBack) y empuja en la dirección
+    // dada — sin flash, sin invulnerabilidad, sin tocar la pila: no es un golpe
+    // recibido, es la física del golpe dado.
+    public void AplicarRetroceso(Vector2 direction, float force, float duration)
+    {
+        if (rb == null) return;
+        rb.linearVelocity = direction * force;
+        knockbackTimer = duration;
     }
 
     // PUSH: la pila es ilimitada, así que siempre se puede apilar

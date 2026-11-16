@@ -16,6 +16,7 @@ GameObject:
   - component: {fileID: 2410029784982705437}
   - component: {fileID: 817394761726927119}
   - component: {fileID: 5591011504806977093}
+  - component: {fileID: 5859586064027145243}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -235,6 +236,18 @@ MonoBehaviour:
   invulnerabilityTime: 0.5
   knockbackForce: 4
   knockbackDuration: 0.2
+--- !u!114 &5859586064027145243
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5403511492603463255}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: acf7d6ac8470d854b9b764983c4b5972, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InventarioJugador
 --- !u!1 &7135560866542495867
 GameObject:
   m_ObjectHideFlags: 0

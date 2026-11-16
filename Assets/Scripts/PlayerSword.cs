@@ -8,6 +8,8 @@ public class PlayerSword : MonoBehaviour
     public float hitCooldown = 0.5f;   // segundos mínimos entre golpes conectados
     public float enemyKnockbackForce = 3f;    // empujón que recibe el enemigo
     public float enemyKnockbackDuration = 0.15f; // tiempo que el enemigo no controla su movimiento
+    public float playerRecoilForce = 1.5f;    // empujón que recibe el JUGADOR al conectar (rebote del golpe)
+    public float playerRecoilDuration = 0.12f; // tiempo sin control tras conectar
 
     private bool wasAttacking;
     private bool hasHit;    // un solo golpe por ataque
@@ -50,6 +52,11 @@ public class PlayerSword : MonoBehaviour
             if (movil != null)
             {
                 movil.ApplyKnockback(direction, enemyKnockbackForce, enemyKnockbackDuration);
+
+                // El enemigo da media vuelta al conectar el golpe (igual que cuando
+                // él golpea): durante el empujón sale despedido y, al retomar la
+                // patrulla, camina en el rumbo invertido — se aleja y vuelve a notarte
+                movil.TurnAround();
             }
             else
             {
@@ -59,6 +66,11 @@ public class PlayerSword : MonoBehaviour
                     enemyRb.linearVelocity = direction * enemyKnockbackForce;
                 }
             }
+
+            // Retroceso del jugador: conectar un ataque te empuja un paso atrás
+            // (mismo mecanismo del knockback por daño, sin flash ni invulnerabilidad)
+            PlayerHealth jugador = GetComponentInParent<PlayerHealth>();
+            jugador?.AplicarRetroceso(-direction, playerRecoilForce, playerRecoilDuration);
         }
     }
 }

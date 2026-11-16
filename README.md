@@ -644,9 +644,9 @@ Este autómata opera **un nivel de abstracción por encima** de todos los anteri
 
 Las letras del alfabeto son objetos del mundo: un `LetraPickup` (la llave, la moneda) escribe su letra en la **cinta** del jugador (`InventarioJugador`), y ahí queda disponible para ser leída. Tres reglas de cadena bien formada, cada una con su lectura formal:
 
-- **Una letra por estado.** Si en un nivel ya se escribió una letra (recogida o ya consumida), los demás pickups de ese nivel quedan inertes: rechazo con log, sin destruirse. La rama no elegida queda cerrada para esa partida — la fila δ sigue existiendo siempre: **la máquina no muta, la corrida elige qué palabra escribir**.
+- **Una letra por visita al estado.** Mientras permaneces en un nivel, solo un pickup deja escribir: los demás quedan inertes (rechazo con log, sin destruirse). La fila δ sigue existiendo siempre — **la máquina no muta, la corrida elige qué palabra escribir**.
 - **La letra se lee una vez y sale de la cinta.** La puerta lectora la consume al transitar: usada la puerta, la llave se gasta.
-- **La cinta es por estado.** Al cambiar de escena, las letras no leídas se pierden (nunca llegaron a leerse): cada nivel escribe su propia mini-palabra, y una letra recogida en un nivel no abre puertas de otro.
+- **La cinta es por estado, y cada visita arranca de cero.** Al cambiar de escena, las letras no leídas se pierden (nunca llegaron a leerse) **y el registro de letras escritas se libera**: reingresar a un estado devuelve los pickups a su estado activo — siempre puedes regresar y escribir de nuevo. Cada nivel escribe su propia mini-palabra, y una letra recogida en un nivel no abre puertas de otro.
 
 La **ramificación** es el premio: dos filas δ desde el mismo estado con símbolos distintos (`δ(q0, llave)` y `δ(q0, moneda)`) no introducen no determinismo — cada letra tiene su fila. Con un solo pickup el lenguaje era trivial; con dos, la partida elige la letra y con ella la rama del recorrido: el conjunto de todas las partidas posibles **es** el lenguaje del autómata.
 
@@ -660,7 +660,7 @@ La **ramificación** es el premio: dos filas δ desde el mismo estado con símbo
 #### Los tres rechazos (misma semántica en todo el sistema)
 
 - **Puerta lectora sin letra:** la cinta está vacía, no hay nada que leer → no existe transición, log y sin efecto.
-- **Pickup en un estado con letra ya escrita:** el símbolo queda inerte para esta partida → rechazo con log, sin destruirse.
+- **Pickup en un estado donde ya se escribió en esta visita:** el símbolo queda inerte hasta reingresar al estado → rechazo con log, sin destruirse.
 - **Símbolo sin fila δ desde el estado actual:** la puerta lleva a ningún lado → log y sin efecto.
 
 Los tres son el mismo rechazo de fondo — entrada sin transición definida = ignorar — idéntico al del PDA de vida (daño con pila vacía) y al de símbolos no esperados en el AFD de combos. Y el rechazo es temprano: el "error" se detecta en el símbolo exacto donde ocurre — la propiedad del prefijo viable de la sección 4, aplicada a la navegación.
@@ -669,10 +669,10 @@ Los tres son el mismo rechazo de fondo — entrada sin transición definida = ig
 
 El jugador **persiste entre niveles** (`DontDestroyOnLoad`): cuando el AFN-λ de mapas hace una transición de estado (carga otra escena), el autómata de vida no se reinicia — **su pila viaja con él**. Formalmente: dos autómatas en niveles distintos de abstracción, donde el cambio de estado del AFN-λ no toca la configuración del PDA. Mecánicamente:
 
-- Al cargar una escena nueva, `MapManager` descarta la copia del jugador que trae esa escena (deduplicación) y ubica al persistente en el `SpawnPoint` que dictó la transición.
+- Al cargar una escena nueva, `MapManager` descarta la copia del jugador que trae esa escena (deduplicación) y ubica al persistente en el `SpawnPoint` que dictó la transición. **Solo el persistente redibuja la UI y apila `Z0`**: las copias tienen la pila vacía (su `Start` nunca corrió) y mueren al final del frame — si dibujaran, borrarían los iconos que el persistente acaba de pintar (por eso la UI aparecía vacía hasta el primer pickup o daño).
 - La UI de vida es de cada escena: `PlayerHealth` re-busca el `HealthUI` de la escena nueva (`SceneManager.sceneLoaded`) y redibuja la pila actual.
 - La cámara `CinemachineCamera` de la escena nueva se reconecta al jugador persistente.
-- La cinta, en cambio, **no** viaja: `MapManager` la reinicia al entrar a cada estado (letras no leídas se pierden).
+- La cinta, en cambio, **no** viaja: `MapManager` la reinicia al entrar a cada estado (letras no leídas se pierden y el registro de letras escritas se libera).
 
 #### Las dos funciones, serializadas por separado (el Inspector)
 
@@ -745,9 +745,9 @@ stateDiagram-v2
 | Estados `Q` | Escenas de Unity; el estado actual vive en `MapManager.estadoActual` |
 | Alfabeto `Σ` | Campo `letra` de cada `LetraPickup` (`llave`, `moneda`): el alfabeto es global |
 | Cinta | `InventarioJugador.LetraActual`: la letra pendiente de ser leída |
-| Una letra por estado | `InventarioJugador.estadosConLetra` (HashSet): el pickup restante queda inerte (la fila δ existe; la corrida no la escribe) |
+| Una letra por visita | `InventarioJugador.estadosConLetra` (HashSet): el pickup restante queda inerte durante la visita (la fila δ existe; la corrida no la escribe). El registro se libera al reingresar al estado |
 | Lectura y consumo | `DoorTransition` (PuertaLectora) lee la cinta, consulta δ y llama `Consumir()`: la letra sale de la cinta al transitar |
-| Cinta por estado | `InventarioJugador.ReiniciarCinta()` invocado por `MapManager` en `sceneLoaded`: las letras no leídas se pierden |
+| Cinta por estado | `InventarioJugador.ReiniciarCinta()` invocado por `MapManager` en `sceneLoaded`: las letras no leídas se pierden y `estadosConLetra` se limpia |
 | Transiciones λ | Lista serializada `transicionesLambda` + índice `deltaLambda` — función aparte de δ; `DoorTransition` (PuertaLibre) consulta `λ(estado)` con su `Id Puerta` |
 | Función de transición δ | Lista serializada `transicionesLetra` + índice `deltaLetra` (Dictionary) en `Awake()` |
 | Acciones de la transición | `LoadScene(escenaDestino)` + colocación en el `SpawnPoint` + reconexión de cámara y UI |
@@ -893,7 +893,7 @@ Proyecto_lenguajes/
 | `MapManager` (GameObject vacío) | `MapManager` | El AFN-λ de mapas (sección 7): `Transiciones Letra` serializa δ y `Transiciones Lambda` las transiciones espontáneas (el `Id Puerta` de cada fila es bookkeeping, no letra de Σ). `Estado Inicial` es q0. Persiste entre escenas (`DontDestroyOnLoad` automático) y reinicia la cinta al entrar a cada estado |
 | Puertas lectoras (casas) | Collider 2D (Is Trigger) + `DoorTransition` con `Tipo: PuertaLectora` | Lee la letra que el jugador lleva en la cinta y emite esa como símbolo; debe existir una fila δ `(estado, letra)`. Sin letra → rechazo. La letra se consume al transitar |
 | Puertas libres (torres) | Collider 2D (Is Trigger) + `DoorTransition` con `Tipo: PuertaLibre` | Transición λ: transita sin leer símbolo. `Id Puerta` es el identificador interno de la fila en la lista λ (no es una letra de Σ) |
-| Letras (pickups) | Collider 2D (Is Trigger) + `LetraPickup` | Campo `Letra`: la letra de Σ que escribe en la cinta (`llave`, `moneda`). Si en el nivel ya se escribió una, queda inerte con su log |
+| Letras (pickups) | Collider 2D (Is Trigger) + `LetraPickup` | Campo `Letra`: la letra de Σ que escribe en la cinta (`llave`, `moneda`). Si en ese estado ya se escribió una en la visita actual, queda inerte con su log; vuelve a estar disponible al reingresar al estado |
 | `InventarioJugador` (en el Player) | `InventarioJugador` | La cinta del AFN-λ: letra pendiente, una por estado, consumo al ser leída, reinicio al cambiar de escena |
 | `SpawnPoint` (por escena) | `SpawnPoint` | Campo `Id`: el destino donde aparece el jugador al entrar por una puerta |
 

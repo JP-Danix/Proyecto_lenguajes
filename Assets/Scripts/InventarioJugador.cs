@@ -4,10 +4,10 @@ using UnityEngine;
 // La cinta del AFN de mapas: la letra (llave, moneda) que el jugador lleva
 // disponible para ser leída por una puerta lectora.
 //
-//   - Una letra por estado (nivel): si en este nivel ya se escribió una letra
-//     (recogida o ya consumida), ningún otro pickup de este nivel deja escribir.
-//     La rama no elegida queda cerrada para esta partida — su pickup queda ahí,
-//     existiendo pero inerte (la fila δ existe siempre; la corrida no la escribe).
+//   - Una letra por VISITA al estado (nivel): mientras permaneces en un estado,
+//     solo un pickup deja escribir (el resto queda inerte). Al reingresar al
+//     estado, la cinta y el registro se reinician: los pickups vuelven a estar
+//     disponibles (siempre puedes regresar y escribir de nuevo).
 //   - La letra se lee una vez y sale de la cinta: la puerta lectora la consume
 //     al transitar.
 //   - La cinta es por estado: al cambiar de escena, las letras no leídas se
@@ -48,8 +48,10 @@ public class InventarioJugador : MonoBehaviour
         LetraActual = null;
     }
 
-    // Cinta por estado: lo llama el MapManager al entrar a un estado nuevo.
-    // Las letras no leídas se pierden; el registro de estados escritos persiste.
+    // Cinta por estado: lo llama el MapManager al entrar a un estado (escena).
+    // Las letras no leídas se pierden y el registro de letras escritas se
+    // libera: cada visita al estado arranca con la cinta vacía y los pickups
+    // disponibles de nuevo.
     public void ReiniciarCinta()
     {
         if (LetraActual != null)
@@ -57,5 +59,6 @@ public class InventarioJugador : MonoBehaviour
             Debug.Log("Cinta por estado: '" + LetraActual + "' nunca fue leída y se pierde al cambiar de estado");
         }
         LetraActual = null;
+        estadosConLetra.Clear();
     }
 }
