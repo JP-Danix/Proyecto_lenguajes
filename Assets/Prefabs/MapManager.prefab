@@ -60,7 +60,7 @@ MonoBehaviour:
   - estadoOrigen: Nivel3
     letra: llave
     escenaDestino: SampleScene
-    spawnId: entrada
+    spawnId: regreso
   - estadoOrigen: Nivel4
     letra: llave
     escenaDestino: Nivel5

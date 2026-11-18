@@ -886,9 +886,16 @@ stateDiagram-v2
     I --> C : moneda
     E --> J : llave
     J --> [*]
+
+    B --> B : λ (torre de N2)
+    C --> C : λ (torre de N3)
+    D --> D : λ (torre de N4)
+    H --> H : λ (torres de N2, N3 y N4)
+    I --> I : λ (torre de N2)
+    J --> J : λ (torre de N2)
 ```
 
-`B` y `D` son las clausuras λ hechas estado: el AFD ya no necesita torres porque **las torres quedaron absorbidas dentro de los conjuntos** — estar en `B` significa "llegaste a `Nivel2` o ya regresaste a `SampleScene`"; estar en `D`, "llegaste a `Nivel4` o ya caíste a `Nivel3` con su torre". Matiz honesto: formalmente `δ'(J, llave) = B` y `δ'(J, moneda) = C` existen en la tabla (porque `SampleScene ∈ J`), pero son **inalcanzables en la corrida** — `Victory` no tiene puertas ni pickups, nadie puede escribir una letra desde el estado de aceptación: la tabla es fiel al método, y el mundo impone la absorción. La ambigüedad que en el juego resuelve el jugador caminando (o no) hacia la torre, en el AFD vive dentro del propio estado: AFND ≡ AFD, con `M' = (Q', Σ, δ', q0', F')` la misma partida descrita sin transiciones espontáneas — construcción replicable en JFLAP con *Convert to DFA*.
+`B` y `D` son las clausuras λ hechas estado: el AFD ya no necesita torres porque **las torres quedaron absorbidas dentro de los conjuntos** — estar en `B` significa "llegaste a `Nivel2` o ya regresaste a `SampleScene`"; estar en `D`, "llegaste a `Nivel4` o ya caíste a `Nivel3` con su torre". Las flechas λ del diagrama (`B`, `C`, `D`, `H`, `I` y `J`) son **self-loops de recordatorio**: marcan que dentro de cada conjunto hay una torre del autómata original (los extremos de cada λ — `N2→S`, `N3→N3`, `N4→N3` — caen siempre dentro del mismo conjunto, por eso no cruzan de un estado a otro). Matiz honesto para la sustentación: formalmente `δ'` **no tiene** transiciones λ — en el AFD estricto, el que exporta JFLAP con *Convert to DFA*, esas flechas no aparecen; acá se dibujan para que la torre de cada nivel se vea a simple vista. Las flechas λ reales del autómata están en el diagrama de la sección de arriba. Matiz honesto: formalmente `δ'(J, llave) = B` y `δ'(J, moneda) = C` existen en la tabla (porque `SampleScene ∈ J`), pero son **inalcanzables en la corrida** — `Victory` no tiene puertas ni pickups, nadie puede escribir una letra desde el estado de aceptación: la tabla es fiel al método, y el mundo impone la absorción. La ambigüedad que en el juego resuelve el jugador caminando (o no) hacia la torre, en el AFD vive dentro del propio estado: AFND ≡ AFD, con `M' = (Q', Σ, δ', q0', F')` la misma partida descrita sin transiciones espontáneas — construcción replicable en JFLAP con *Convert to DFA*.
 
 | Concepto formal | Implementación |
 |-----------------|----------------|
