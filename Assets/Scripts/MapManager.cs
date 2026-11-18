@@ -167,6 +167,19 @@ public class MapManager : MonoBehaviour
             if (inventario != null) inventario.ReiniciarCinta();
         }
 
+        // El orden de dibujo de la FSM de la colina es POR ESCENA, pero el jugador
+        // persistente viaja con él: si salió del estado anterior estando "sobre" una
+        // colina (subió y se fue por una puerta sin pasar por su HillExit), llega con
+        // sortingOrder 15 y las colinas del estado nuevo dejan de taparlo. Al entrar
+        // a un estado, la FSM de la colina arranca de cero: orden base 4 (HillExit
+        // usa el mismo valor al bajar por la escalera). Si el spawn cae dentro de un
+        // trigger de entrada, ese HillEntry vuelve a subirlo a 15 después.
+        if (jugador != null)
+        {
+            SpriteRenderer sprite = jugador.GetComponent<SpriteRenderer>();
+            if (sprite != null) sprite.sortingOrder = 4;
+        }
+
         // Salida de la transición: colocar al jugador en el spawn que dictó
         if (jugador != null && !string.IsNullOrEmpty(spawnPendiente))
         {
